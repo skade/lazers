@@ -1,0 +1,27 @@
+author: Florian Gilcher
+title: LazeRs
+lang: en
+
+# Uncomment and fill to generate files
+output.html: index.html
+output.epub: LazeRs.epub
+output.pdf: LazeRs.pdf
+
+# Uncomment and fill to set cover image (for Epub)
+# cover: some_cover.png
+
+# List of chapters
++ ../README.MD
++ ../lazers-traits/src/lib.md
++ ../lazers-db/src/lib.md
++ ../lazers-hashmap/src/lib.md
++ ../lazers-hyper-client/src/lib.md
++ ../lazers-replicator/src/lib.md
++ ../lazers-changes-stream/src/changes_stream.md
++ ../lazers-changes-stream/src/lib.md
++ ../lazers-changes-stream/src/types/change.md
++ ../lazers-changes-stream/src/types/changes_lines.md
++ ../lazers-changes-stream/src/types/document.md
++ ../lazers-changes-stream/src/types/last_seq.md
++ ../lazers-changes-stream/src/types/mod.md
++ ../lazers-changes-stream/src/types/revision.md
