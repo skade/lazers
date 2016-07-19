@@ -1,0 +1,14 @@
+[package]
+name = "lazers-traits"
+version = "0.1.0"
+authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
+
+build = "tango-build.rs"
+
+[dependencies]
+
+[build-dependencies]
+tango = "0.5.0"
+
+[lib]
+name = "lazers_traits"

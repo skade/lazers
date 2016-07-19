@@ -1,0 +1,19 @@
+[package]
+name = "lazers-changes-stream"
+version = "0.1.0"
+authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
+
+build = "tango-build.rs"
+
+[dependencies]
+serde = "*"
+serde_json = "*"
+
+[dev-dependencies]
+hyper = "*"
+
+[build-dependencies.tango]
+git = "file:///Users/skade/Code/rust/tango"
+
+[lib]
+name = "lazers_changes_stream"
