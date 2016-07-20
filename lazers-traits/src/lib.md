@@ -34,7 +34,7 @@ pub enum DatabaseState<D: Database, C: DatabaseCreator> {
 pub trait DatabaseResult {
     type D: Database;
 
-    fn or_create(self) -> Result<DatabaseState<Self::D, <<Self as DatabaseResult>::D as Database>::Creator>, Error>;
+    fn or_create(self) -> Self;
 }
 
 impl<D: Database> DatabaseResult for Result<DatabaseState<D, D::Creator>, Error> {

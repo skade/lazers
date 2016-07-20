@@ -121,6 +121,6 @@ fn test_database_create() {
     let res = client.find_database("to_be_created".to_string())
                     .or_create();
     assert!(res.is_ok());
-    assert!(res.as_ref().unwrap().existing())
+    assert!(res.unwrap().existing())
 }
 ```
