@@ -70,6 +70,18 @@ impl DatabaseCreator for RemoteDatabaseCreator {
 impl Database for RemoteDatabase {
     type Creator = RemoteDatabaseCreator;
 
+    fn delete(self) -> Result<RemoteDatabaseCreator, Error> {
+        let mut url = self.base_url.clone();
+        url.set_path(self.name.as_ref());
+        let client = hyper::client::Client::new();
+        let res = client.delete(url)
+                        .send();
+
+        match res {
+            Ok(_) => Ok(RemoteDatabaseCreator { name: self.name, base_url: self.base_url }),
+            Err(e) => Err(e.to_string())
+        }
+    }
 }
 
 impl Client for HyperClient {
@@ -122,5 +134,15 @@ fn test_database_create() {
                     .or_create();
     assert!(res.is_ok());
     assert!(res.unwrap().existing())
+}
+
+#[test]
+fn test_database_create_and_delete() {
+    let client = HyperClient::default();
+    let res = client.find_database("to_be_created".to_string())
+                    .or_create()
+                    .and_delete();
+    assert!(res.is_ok());
+    assert!(res.unwrap().absent())
 }
 ```
