@@ -1,4 +1,4 @@
-author: Florian Gilcher
+author: "."
 title: LazeRs
 lang: en
 
@@ -11,7 +11,7 @@ output.pdf: LazeRs.pdf
 # cover: some_cover.png
 
 # List of chapters
-+ ../README.MD
+- ../README.MD
 + ../lazers-traits/src/lib.md
 + ../lazers-db/src/lib.md
 + ../lazers-hashmap/src/lib.md
