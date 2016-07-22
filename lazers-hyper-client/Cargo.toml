@@ -1,13 +1,13 @@
 [package]
-name = "lazers_hyper_client"
+name = "lazers-hyper-client"
 version = "0.1.0"
 authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 
 build = "tango-build.rs"
 
 [dependencies]
-hyper = "*"
-url = "*"
+hyper = "0.9.10"
+url = "1.1.1"
 
 [dependencies.lazers-traits]
 path = "../lazers-traits"
