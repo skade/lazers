@@ -19,7 +19,7 @@ use hyper::status::StatusCode;
 
 use url::{Url, Host};
 
-struct HyperClient {
+pub struct HyperClient {
     inner: hyper::client::Client,
     base_url: Url,
 }
@@ -34,18 +34,12 @@ impl Default for HyperClient {
     }
 }
 
-//impl HyperClient {
-//    fn new(server: Url) -> HyperClient {
-//        
-//    }
-//}
-
-struct RemoteDatabaseCreator {
+pub struct RemoteDatabaseCreator {
     name: DatabaseName,
     base_url: Url
 }
 
-struct RemoteDatabase {
+pub struct RemoteDatabase {
     name: DatabaseName,
     base_url: Url
 }
