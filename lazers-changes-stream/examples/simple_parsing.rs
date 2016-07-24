@@ -1,9 +1,9 @@
 extern crate hyper;
 extern crate serde;
 extern crate serde_json as json;
-extern crate syncdb_changes_stream;
+extern crate lazers_changes_stream;
 
-use syncdb_changes_stream::changes_stream::ChangesStream;
+use lazers_changes_stream::changes_stream::ChangesStream;
 
 use hyper::Client;
 use hyper::header::Connection;
