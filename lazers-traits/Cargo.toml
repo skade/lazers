@@ -6,6 +6,7 @@ authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 build = "tango-build.rs"
 
 [dependencies]
+serde = "0.7.0"
 
 [build-dependencies]
 tango = "0.5.0"

@@ -6,14 +6,14 @@ authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 build = "tango-build.rs"
 
 [dependencies]
-serde = "*"
-serde_json = "*"
+serde = "0.7.4"
+serde_json = "0.7.4"
 
 [dev-dependencies]
-hyper = "*"
+hyper = "0.9.0"
 
-[build-dependencies.tango]
-git = "file:///Users/skade/Code/rust/tango"
+[build-dependencies]
+tango = "0.5.0"
 
 [lib]
 name = "lazers_changes_stream"

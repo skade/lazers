@@ -1,7 +1,6 @@
 ```rust
 use serde;
 use serde::de::Deserialize;
-use serde::de::Deserializer;
 
 #[derive(Debug)]
 pub struct Revision {
