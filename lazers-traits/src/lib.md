@@ -7,7 +7,6 @@ use std::hash::Hash;
 use std::borrow::Borrow;
 use serde::de::Deserialize;
 
-use std::marker::PhantomData;
 
 pub type DatabaseName = String;
 pub type Error = String;
@@ -23,30 +22,12 @@ pub trait Backend where Self: Sized {
     fn delete<Q: ?Sized>(&mut self, k: &Q) -> Option<Self::V> where Self::K: Borrow<Q>, Q: Eq + Hash, Self : Sized;
 }
 
-pub trait Document : Deserialize {
+pub trait Document : Deserialize where Self : Sized {
 
 }
 
-pub struct PresentDocument<K: Key, D: Document> {
-    key: K,
-    doc: D
-}
+impl<D: Deserialize + Sized> Document for D {
 
-impl<K: Key, D: Document> PresentDocument<K, D> {
-    pub fn new(key: K, doc: D) -> PresentDocument<K, D> {
-        PresentDocument { key: key, doc: doc}
-    }
-}
-
-pub struct AbsentDocument<K: Key, D: Document> {
-    key: K,
-    doc: PhantomData<D>
-}
-
-impl<K: Key, D: Document> AbsentDocument<K, D> {
-    pub fn new(key: K) -> AbsentDocument<K, D> {
-        AbsentDocument { key: key, doc: PhantomData::default() }
-    }
 }
 
 pub trait Key : Eq where Self: Sized {
@@ -90,9 +71,46 @@ pub trait DatabaseCreator where Self: Sized {
 }
 
 pub enum DatabaseEntry<K: Key, D: Document> {
-    Present(PresentDocument<K, D>),
-    Absent(AbsentDocument<K, D>),
-    Collided(Vec<PresentDocument<K, D>>),
+    Present { key: K, doc: D },
+    Absent  { key: K },
+    Collided(Vec<(K, D)>),
+}
+
+impl<K: Key, D: Document> DatabaseEntry<K, D> {
+    pub fn present(key: K, doc: D) -> DatabaseEntry<K, D> {
+        DatabaseEntry::Present { key: key, doc: doc }
+    }
+    pub fn absent(key: K) -> DatabaseEntry<K, D> {
+        DatabaseEntry::Absent { key: key }
+    }
+
+    pub fn exists(&self) -> bool {
+        match self {
+            &DatabaseEntry::Present { .. } | &DatabaseEntry::Collided(_) => true,
+            _ => false
+        }
+    }
+}
+
+pub trait DocumentResult {
+    type K: Key;
+    type D: Document;
+
+    fn get(self) -> Result<Self::D>;
+    //fn set(self) -> Result<Self::D>;
+}
+
+impl<K: Key, D: Document> DocumentResult for Result<DatabaseEntry<K, D>> {
+    type K = K;
+    type D = D;
+
+    fn get(self) -> Result<Self::D> {
+        match self {
+            Ok(DatabaseEntry::Present { doc: d, .. }) => Ok(d),
+            Ok(_) => Err("Document not available".into()),
+            Err(e) => Err(e)
+        }
+    }
 }
 
 pub trait Database where Self: Sized {

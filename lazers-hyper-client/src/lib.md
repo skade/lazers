@@ -13,24 +13,18 @@ use lazers_traits::DatabaseName;
 use lazers_traits::Database;
 use lazers_traits::DatabaseState;
 use lazers_traits::DatabaseCreator;
-use lazers_traits::DatabaseResult;
 use lazers_traits::Error;
-use lazers_traits::SimpleKey;
 use lazers_traits::Document;
 use lazers_traits::DatabaseEntry;
-use lazers_traits::PresentDocument;
-use lazers_traits::AbsentDocument;
 use lazers_traits::Key;
 use serde_json::de::from_reader;
+use lazers_traits::DatabaseResult;
 
 use hyper::header::ETag;
 
-use std::marker::PhantomData;
-
-
 use hyper::status::StatusCode;
 
-use url::{Url, Host};
+use url::{Url};
 
 pub struct HyperClient {
     inner: hyper::client::Client,
@@ -96,6 +90,7 @@ impl Database for RemoteDatabase {
         let client = hyper::client::Client::new();
         let res = client.get(url)
                         .send();
+
         match res {
             Ok(r) => {
                 match r.status {
@@ -103,9 +98,9 @@ impl Database for RemoteDatabase {
                         let rev = r.headers.get::<ETag>().unwrap().clone();
                         let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(), Some(rev.tag().to_owned()));
                         let doc = from_reader(r).unwrap();
-                        Ok(DatabaseEntry::Present(PresentDocument::new(key_with_rev, doc)))
+                        Ok(DatabaseEntry::present(key_with_rev, doc))
                     },
-                    StatusCode::NotFound => Ok(DatabaseEntry::Absent(AbsentDocument::new(key))),
+                    StatusCode::NotFound => Ok(DatabaseEntry::absent(key)),
                     _ => Err(format!("unexpected status: {}", r.status))
                 }
             },
@@ -176,8 +171,26 @@ fn test_database_create_and_delete() {
     assert!(res.is_ok());
     assert!(res.unwrap().absent())
 }
+
+#[test]
+fn test_database_get_document() {
+    use lazers_traits::SimpleKey;
+    use serde_json::Value;
+
+    let client = HyperClient::default();
+    let res = client.find_database("empty_test_db".to_string())
+                    .or_create();
+    assert!(res.is_ok());
+    let db = res.unwrap();
+    assert!(db.existing());
+
+    if let DatabaseState::Existing(db) = db {
+        let key = SimpleKey::from("test".to_owned());
+        let doc_res = db.doc::<SimpleKey, Value>(key);
+        assert!(doc_res.is_ok());
+    } else {
+        panic!("database not existing!")
+    }
+}
 ```
-=======
->>>>>>> External Changes
-=======
->>>>>>> External Changes
+
