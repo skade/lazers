@@ -8,6 +8,8 @@ build = "tango-build.rs"
 [dependencies]
 hyper = "0.9.10"
 url = "1.1.1"
+serde = "0.7.4"
+serde_json = "0.7.4"
 
 [dependencies.lazers-traits]
 path = "../lazers-traits"

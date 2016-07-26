@@ -6,6 +6,7 @@ A CouchDB client implemented using hyper.
 extern crate hyper;
 extern crate url;
 extern crate lazers_traits;
+extern crate serde_json;
 
 use lazers_traits::Client;
 use lazers_traits::DatabaseName;
@@ -14,6 +15,18 @@ use lazers_traits::DatabaseState;
 use lazers_traits::DatabaseCreator;
 use lazers_traits::DatabaseResult;
 use lazers_traits::Error;
+use lazers_traits::SimpleKey;
+use lazers_traits::Document;
+use lazers_traits::DatabaseEntry;
+use lazers_traits::PresentDocument;
+use lazers_traits::AbsentDocument;
+use lazers_traits::Key;
+use serde_json::de::from_reader;
+
+use hyper::header::ETag;
+
+use std::marker::PhantomData;
+
 
 use hyper::status::StatusCode;
 
@@ -64,7 +77,7 @@ impl DatabaseCreator for RemoteDatabaseCreator {
 impl Database for RemoteDatabase {
     type Creator = RemoteDatabaseCreator;
 
-    fn delete(self) -> Result<RemoteDatabaseCreator, Error> {
+    fn destroy(self) -> Result<RemoteDatabaseCreator, Error> {
         let mut url = self.base_url.clone();
         url.set_path(self.name.as_ref());
         let client = hyper::client::Client::new();
@@ -76,6 +89,30 @@ impl Database for RemoteDatabase {
             Err(e) => Err(e.to_string())
         }
     }
+
+    fn doc<K: Key, D: Document>(&self, key: K) -> Result<DatabaseEntry<K, D>, Error> {
+        let mut url = self.base_url.clone();
+        url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
+        let client = hyper::client::Client::new();
+        let res = client.get(url)
+                        .send();
+        match res {
+            Ok(r) => {
+                match r.status {
+                    StatusCode::Ok => {
+                        let rev = r.headers.get::<ETag>().unwrap().clone();
+                        let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(), Some(rev.tag().to_owned()));
+                        let doc = from_reader(r).unwrap();
+                        Ok(DatabaseEntry::Present(PresentDocument::new(key_with_rev, doc)))
+                    },
+                    StatusCode::NotFound => Ok(DatabaseEntry::Absent(AbsentDocument::new(key))),
+                    _ => Err(format!("unexpected status: {}", r.status))
+                }
+            },
+            Err(e) => { Err(e.to_string()) }
+        }
+    }
+
 }
 
 impl Client for HyperClient {
@@ -140,3 +177,7 @@ fn test_database_create_and_delete() {
     assert!(res.unwrap().absent())
 }
 ```
+=======
+>>>>>>> External Changes
+=======
+>>>>>>> External Changes
