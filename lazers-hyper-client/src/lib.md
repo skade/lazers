@@ -7,6 +7,7 @@ extern crate hyper;
 extern crate url;
 extern crate lazers_traits;
 extern crate serde_json;
+extern crate mime;
 
 use lazers_traits::Client;
 use lazers_traits::DatabaseName;
@@ -18,9 +19,13 @@ use lazers_traits::Document;
 use lazers_traits::DatabaseEntry;
 use lazers_traits::Key;
 use serde_json::de::from_reader;
+use serde_json::ser::to_string;
+use serde_json::Value;
+
 use lazers_traits::DatabaseResult;
 
 use hyper::header::ETag;
+use hyper::header::ContentType;
 
 use hyper::status::StatusCode;
 
@@ -84,7 +89,7 @@ impl Database for RemoteDatabase {
         }
     }
 
-    fn doc<K: Key, D: Document>(&self, key: K) -> Result<DatabaseEntry<K, D>, Error> {
+    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, RemoteDatabase>, Error> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
         let client = hyper::client::Client::new();
@@ -98,9 +103,9 @@ impl Database for RemoteDatabase {
                         let rev = r.headers.get::<ETag>().unwrap().clone();
                         let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(), Some(rev.tag().to_owned()));
                         let doc = from_reader(r).unwrap();
-                        Ok(DatabaseEntry::present(key_with_rev, doc))
+                        Ok(DatabaseEntry::present(key_with_rev, doc, self))
                     },
-                    StatusCode::NotFound => Ok(DatabaseEntry::absent(key)),
+                    StatusCode::NotFound => Ok(DatabaseEntry::absent(key, self)),
                     _ => Err(format!("unexpected status: {}", r.status))
                 }
             },
@@ -108,6 +113,38 @@ impl Database for RemoteDatabase {
         }
     }
 
+    // this should probably be &doc, as Doc won't be changed, but might
+    // get a new key
+    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D), Error> {
+        let mut url = self.base_url.clone();
+        url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
+        let client = hyper::client::Client::new();
+        let body = match to_string(&doc) {
+                     Ok(s) => s,
+                     Err(e) => return Err(e.to_string())
+                   };
+        println!("{}", body);
+        let mime: mime::Mime = "application/json".parse().unwrap();
+        let res = client.put(url)
+                        .header(ContentType(mime))
+                        .body(&body)
+                        .send();
+        match res {
+            Ok(r) => {
+                // TODO: Heavily rework this
+                println!("{:?}", r);
+                let new_data: Value = from_reader(r).unwrap();
+                let obj = new_data.as_object().unwrap();
+                let id = obj.get("id").unwrap().as_string().unwrap();
+                let rev = obj.get("rev").unwrap().as_string().unwrap();
+
+                let k = <K as Key>::from_id_and_rev(id.to_owned(), Some(rev.to_owned()));
+
+                Ok((k, doc))
+            },
+            Err(e) => Err(e.to_string())
+        }
+    }
 }
 
 impl Client for HyperClient {
@@ -192,5 +229,31 @@ fn test_database_get_document() {
         panic!("database not existing!")
     }
 }
-```
 
+#[test]
+fn test_database_create_document() {
+    use lazers_traits::SimpleKey;
+    use serde_json::Value;
+    use lazers_traits::DocumentResult;
+
+    let client = HyperClient::default();
+    let res = client.find_database("empty_test_db".to_string())
+                    .or_create();
+    assert!(res.is_ok());
+    let db = res.unwrap();
+    assert!(db.existing());
+
+    if let DatabaseState::Existing(db) = db {
+        let key = SimpleKey::from("test-will-be-created".to_owned());
+        let s = "{\"x\": 1.0, \"y\": 2.0}";
+        let value: Value = serde_json::from_str(s).unwrap();
+        let doc_res = db.doc::<SimpleKey, Value>(key);
+
+        let set_res = doc_res.set(value);
+
+        assert!(set_res.is_ok());
+    } else {
+        panic!("database not existing!")
+    }
+}
+```

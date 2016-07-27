@@ -6,6 +6,7 @@ extern crate serde;
 use std::hash::Hash;
 use std::borrow::Borrow;
 use serde::de::Deserialize;
+use serde::ser::Serialize;
 
 
 pub type DatabaseName = String;
@@ -22,11 +23,11 @@ pub trait Backend where Self: Sized {
     fn delete<Q: ?Sized>(&mut self, k: &Q) -> Option<Self::V> where Self::K: Borrow<Q>, Q: Eq + Hash, Self : Sized;
 }
 
-pub trait Document : Deserialize where Self : Sized {
+pub trait Document : Deserialize + Serialize where Self : Sized {
 
 }
 
-impl<D: Deserialize + Sized> Document for D {
+impl<D: Deserialize + Serialize + Sized> Document for D {
 
 }
 
@@ -70,23 +71,24 @@ pub trait DatabaseCreator where Self: Sized {
     fn create(self) -> Result<Self::D>;
 }
 
-pub enum DatabaseEntry<K: Key, D: Document> {
-    Present { key: K, doc: D },
-    Absent  { key: K },
-    Collided(Vec<(K, D)>),
+pub enum DatabaseEntry<'a, K: Key, D: Document, DB: Database + 'a> {
+    Present { key: K, doc: D, database: &'a DB },
+    Absent  { key: K, database: &'a DB},
+    Collided { key: K, documents: Vec<D>, database: &'a DB },
 }
 
-impl<K: Key, D: Document> DatabaseEntry<K, D> {
-    pub fn present(key: K, doc: D) -> DatabaseEntry<K, D> {
-        DatabaseEntry::Present { key: key, doc: doc }
+impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
+    pub fn present(key: K, doc: D, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
+        DatabaseEntry::Present { key: key, doc: doc, database: database }
     }
-    pub fn absent(key: K) -> DatabaseEntry<K, D> {
-        DatabaseEntry::Absent { key: key }
+
+    pub fn absent(key: K, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
+        DatabaseEntry::Absent { key: key, database: database}
     }
 
     pub fn exists(&self) -> bool {
         match self {
-            &DatabaseEntry::Present { .. } | &DatabaseEntry::Collided(_) => true,
+            &DatabaseEntry::Present { .. } | &DatabaseEntry::Collided { .. } => true,
             _ => false
         }
     }
@@ -97,10 +99,10 @@ pub trait DocumentResult {
     type D: Document;
 
     fn get(self) -> Result<Self::D>;
-    //fn set(self) -> Result<Self::D>;
+    fn set(self, doc: Self::D) -> Self;
 }
 
-impl<K: Key, D: Document> DocumentResult for Result<DatabaseEntry<K, D>> {
+impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEntry<'a, K, D, DB>> {
     type K = K;
     type D = D;
 
@@ -111,13 +113,37 @@ impl<K: Key, D: Document> DocumentResult for Result<DatabaseEntry<K, D>> {
             Err(e) => Err(e)
         }
     }
+
+    fn set(self, doc: D) -> Self {
+        match self {
+            Ok(DatabaseEntry::Present { key: key, database: db, .. }) => {
+                match db.insert(key, doc) {
+                    Ok((key, doc)) => {
+                        Ok(DatabaseEntry::Present { key: key, doc: doc, database: db })
+                    }
+                    Err(e) => Err(e)
+                }
+            },
+            Ok(DatabaseEntry::Absent { key: key, database: db, .. }) => {
+                match db.insert(key, doc) {
+                    Ok((key, doc)) => {
+                        Ok(DatabaseEntry::Present { key: key, doc: doc, database: db })
+                    }
+                    Err(e) => Err(e)
+                }
+            },
+            Ok(DatabaseEntry::Collided { .. }) => panic!("unimplemented"),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 pub trait Database where Self: Sized {
     type Creator: DatabaseCreator<D = Self>;
 
     fn destroy(self) -> Result<Self::Creator>;
-    fn doc<K: Key, D: Document>(&self, key: K) -> Result<DatabaseEntry<K, D>>;
+    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, Self>>;
+    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)>;
 }
 
 pub enum DatabaseState<D: Database, C: DatabaseCreator> {
