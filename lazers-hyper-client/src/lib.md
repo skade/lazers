@@ -6,8 +6,13 @@ A CouchDB client implemented using hyper.
 extern crate hyper;
 extern crate url;
 extern crate lazers_traits;
+extern crate serde;
 extern crate serde_json;
 extern crate mime;
+
+mod types;
+use types::document_created::DocumentCreated;
+use types::error;
 
 use lazers_traits::Client;
 use lazers_traits::DatabaseName;
@@ -20,7 +25,6 @@ use lazers_traits::DatabaseEntry;
 use lazers_traits::Key;
 use serde_json::de::from_reader;
 use serde_json::ser::to_string;
-use serde_json::Value;
 
 use lazers_traits::DatabaseResult;
 
@@ -30,6 +34,7 @@ use hyper::header::ContentType;
 use hyper::status::StatusCode;
 
 use url::{Url};
+
 
 pub struct HyperClient {
     inner: hyper::client::Client,
@@ -118,12 +123,17 @@ impl Database for RemoteDatabase {
     fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D), Error> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
+
+        if let Some(rev) = key.rev() {
+            url.query_pairs_mut().append_pair("rev", rev);
+        }
+
         let client = hyper::client::Client::new();
         let body = match to_string(&doc) {
                      Ok(s) => s,
                      Err(e) => return Err(e.to_string())
                    };
-        println!("{}", body);
+
         let mime: mime::Mime = "application/json".parse().unwrap();
         let res = client.put(url)
                         .header(ContentType(mime))
@@ -131,16 +141,23 @@ impl Database for RemoteDatabase {
                         .send();
         match res {
             Ok(r) => {
-                // TODO: Heavily rework this
-                println!("{:?}", r);
-                let new_data: Value = from_reader(r).unwrap();
-                let obj = new_data.as_object().unwrap();
-                let id = obj.get("id").unwrap().as_string().unwrap();
-                let rev = obj.get("rev").unwrap().as_string().unwrap();
+                match r.status {
+                    StatusCode::Created => {
+                        let response_data: DocumentCreated = from_reader(r).unwrap();
 
-                let k = <K as Key>::from_id_and_rev(id.to_owned(), Some(rev.to_owned()));
+                        let k = K::from_id_and_rev(response_data.id, Some(response_data.rev));
 
-                Ok((k, doc))
+                        Ok((k, doc))
+                    }
+                    StatusCode::Conflict => {
+                        let response_data: error::Error = from_reader(r).unwrap();
+                        match response_data {
+                            error::Error::Conflict(reason) => { Err(reason) },
+                            error::Error::BadRequest(reason) => { Err(reason) },
+                        }
+                    }
+                    _ => Err(format!("unexpected status: {}", r.status))
+                }
             },
             Err(e) => Err(e.to_string())
         }
@@ -155,16 +172,10 @@ impl Database for RemoteDatabase {
                         .send();
 
         match res {
-            Ok(mut r) => {
+            Ok(r) => {
                 match r.status {
                     StatusCode::Ok => { Ok(()) },
                     _ => {
-                        use std::io::Read;
-
-                        println!("{:?}", r);
-                        let mut s = String::new();
-                        r.read_to_string(&mut s);
-                        println!("{}", s);
                         Err(format!("unexpected status: {}", r.status))
                     }
                 }
@@ -229,7 +240,7 @@ fn test_database_create() {
 #[test]
 fn test_database_create_and_delete() {
     let client = HyperClient::default();
-    let res = client.find_database("to_be_created".to_string())
+    let res = client.find_database("to_be_deleted".to_string())
                     .or_create()
                     .and_delete();
     assert!(res.is_ok());
@@ -274,11 +285,20 @@ fn test_database_create_document() {
         let key = SimpleKey::from("test-will-be-created".to_owned());
         let s = "{\"x\": 1.0, \"y\": 2.0}";
         let value: Value = serde_json::from_str(s).unwrap();
-        let doc_res = db.doc::<SimpleKey, Value>(key);
+        let doc_res = db.doc(key);
+        assert!(doc_res.is_ok());
+
         let del_res = doc_res.delete();
+        assert!(del_res.is_ok());
+
         let set_res = del_res.set(value);
 
-        assert!(set_res.is_ok());
+        match set_res {
+            Err(e) => {println!("{}", e); panic!()},
+            _ => { }
+        };
+
+        //assert!(set_res.is_ok());
     } else {
         panic!("database not existing!")
     }

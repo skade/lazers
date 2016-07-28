@@ -152,8 +152,8 @@ impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEn
                     Err(e) => Err(e)
                 }
             },
-            DatabaseEntry::Absent { .. } => {
-                Ok(self)
+            a @ DatabaseEntry::Absent { .. } => {
+                Ok(a)
             },
             DatabaseEntry::Collided { .. } => panic!("unimplemented")
         }
