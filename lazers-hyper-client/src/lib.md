@@ -145,6 +145,33 @@ impl Database for RemoteDatabase {
             Err(e) => Err(e.to_string())
         }
     }
+
+    fn delete<K: Key>(&self, key: K) -> Result<(), Error> {
+        let mut url = self.base_url.clone();
+        url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
+        url.query_pairs_mut().append_pair("rev", key.rev().unwrap());
+        let client = hyper::client::Client::new();
+        let res = client.delete(url)
+                        .send();
+
+        match res {
+            Ok(mut r) => {
+                match r.status {
+                    StatusCode::Ok => { Ok(()) },
+                    _ => {
+                        use std::io::Read;
+
+                        println!("{:?}", r);
+                        let mut s = String::new();
+                        r.read_to_string(&mut s);
+                        println!("{}", s);
+                        Err(format!("unexpected status: {}", r.status))
+                    }
+                }
+            },
+            Err(e) => Err(e.to_string()),
+        }
+    }
 }
 
 impl Client for HyperClient {
@@ -248,8 +275,8 @@ fn test_database_create_document() {
         let s = "{\"x\": 1.0, \"y\": 2.0}";
         let value: Value = serde_json::from_str(s).unwrap();
         let doc_res = db.doc::<SimpleKey, Value>(key);
-
-        let set_res = doc_res.set(value);
+        let del_res = doc_res.delete();
+        let set_res = del_res.set(value);
 
         assert!(set_res.is_ok());
     } else {

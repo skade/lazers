@@ -31,7 +31,7 @@ impl<D: Deserialize + Serialize + Sized> Document for D {
 
 }
 
-pub trait Key : Eq where Self: Sized {
+pub trait Key : Eq + Clone where Self: Sized {
     fn id(&self) -> &str;
     fn rev(&self) -> Option<&str>;
     fn from_id_and_rev(id: String, rev: Option<String>) -> Self;
@@ -100,6 +100,7 @@ pub trait DocumentResult {
 
     fn get(self) -> Result<Self::D>;
     fn set(self, doc: Self::D) -> Self;
+    fn delete(self) -> Self;
 }
 
 impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEntry<'a, K, D, DB>> {
@@ -107,16 +108,19 @@ impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEn
     type D = D;
 
     fn get(self) -> Result<Self::D> {
-        match self {
-            Ok(DatabaseEntry::Present { doc: d, .. }) => Ok(d),
-            Ok(_) => Err("Document not available".into()),
-            Err(e) => Err(e)
+        let entry = try!(self);
+
+        match entry {
+            DatabaseEntry::Present { doc: d, .. } => Ok(d),
+            _ => Err("Document not available".into()),
         }
     }
 
     fn set(self, doc: D) -> Self {
-        match self {
-            Ok(DatabaseEntry::Present { key: key, database: db, .. }) => {
+        let entry = try!(self);
+
+        match entry {
+            DatabaseEntry::Present { key, database: db, .. } => {
                 match db.insert(key, doc) {
                     Ok((key, doc)) => {
                         Ok(DatabaseEntry::Present { key: key, doc: doc, database: db })
@@ -124,7 +128,7 @@ impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEn
                     Err(e) => Err(e)
                 }
             },
-            Ok(DatabaseEntry::Absent { key: key, database: db, .. }) => {
+            DatabaseEntry::Absent { key, database: db, .. } => {
                 match db.insert(key, doc) {
                     Ok((key, doc)) => {
                         Ok(DatabaseEntry::Present { key: key, doc: doc, database: db })
@@ -132,8 +136,26 @@ impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEn
                     Err(e) => Err(e)
                 }
             },
-            Ok(DatabaseEntry::Collided { .. }) => panic!("unimplemented"),
-            Err(e) => Err(e),
+            DatabaseEntry::Collided { .. } => panic!("unimplemented")
+        }
+    }
+
+    fn delete(self) -> Self {
+        let entry = try!(self);
+
+        match entry {
+            DatabaseEntry::Present { key, database: db, .. } => {
+                match db.delete(key.clone()) {
+                    Ok(()) => {
+                        Ok(DatabaseEntry::Absent { key: key, database: db })
+                    }
+                    Err(e) => Err(e)
+                }
+            },
+            DatabaseEntry::Absent { .. } => {
+                Ok(self)
+            },
+            DatabaseEntry::Collided { .. } => panic!("unimplemented")
         }
     }
 }
@@ -144,6 +166,7 @@ pub trait Database where Self: Sized {
     fn destroy(self) -> Result<Self::Creator>;
     fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, Self>>;
     fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)>;
+    fn delete<K: Key>(&self, key: K) -> Result<()>;
 }
 
 pub enum DatabaseState<D: Database, C: DatabaseCreator> {
