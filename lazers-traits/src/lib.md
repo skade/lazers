@@ -8,6 +8,7 @@ use std::borrow::Borrow;
 use serde::de::Deserialize;
 use serde::ser::Serialize;
 
+use std::fmt::Debug;
 
 pub type DatabaseName = String;
 pub type Error = String;
@@ -31,13 +32,13 @@ impl<D: Deserialize + Serialize + Sized> Document for D {
 
 }
 
-pub trait Key : Eq + Clone where Self: Sized {
+pub trait Key : Eq + Clone + Debug where Self: Sized {
     fn id(&self) -> &str;
     fn rev(&self) -> Option<&str>;
     fn from_id_and_rev(id: String, rev: Option<String>) -> Self;
 }
 
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Debug,Clone,PartialEq,Eq)]
 pub struct SimpleKey {
     pub id: String,
     pub rev: Option<String>
@@ -47,7 +48,7 @@ impl Key for SimpleKey {
     fn id(&self) -> &str {
         &self.id
     }
-    
+
     fn rev(&self) -> Option<&str> {
         match self.rev {
             Some(ref string) => Some(string),
@@ -71,6 +72,8 @@ pub trait DatabaseCreator where Self: Sized {
     fn create(self) -> Result<Self::D>;
 }
 
+
+#[derive(Debug)]
 pub enum DatabaseEntry<'a, K: Key, D: Document, DB: Database + 'a> {
     Present { key: K, doc: D, database: &'a DB },
     Absent  { key: K, database: &'a DB},

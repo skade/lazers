@@ -121,6 +121,7 @@ impl Database for RemoteDatabase {
     // this should probably be &doc, as Doc won't be changed, but might
     // get a new key
     fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D), Error> {
+        println!("{:?}", key);
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
 
@@ -276,6 +277,7 @@ fn test_database_create_document() {
 
     let client = HyperClient::default();
     let res = client.find_database("empty_test_db".to_string())
+                    .and_delete()
                     .or_create();
     assert!(res.is_ok());
     let db = res.unwrap();
