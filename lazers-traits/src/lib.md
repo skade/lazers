@@ -2,6 +2,7 @@
 
 ```rust
 extern crate serde;
+#[macro_use] extern crate error_chain;
 
 use std::hash::Hash;
 use std::borrow::Borrow;
@@ -10,19 +11,58 @@ use serde::ser::Serialize;
 
 use std::fmt::Debug;
 
-pub type DatabaseName = String;
-pub type Error = String;
+error_chain! {
+    // The type defined for this error. These are the conventional
+    // and recommended names, but they can be arbitrarily chosen.
+    types {
+        Error, ErrorKind, ChainErr, Result;
+    }
 
-pub type Result<T> = std::result::Result<T, Error>;
+    // Automatic conversions between this error chain and other
+    // error chains. In this case, it will e.g. generate an
+    // `ErrorKind` variant called `Dist` which in turn contains
+    // the `rustup_dist::ErrorKind`, with conversions from
+    // `rustup_dist::Error`.
+    //
+    // This section can be empty.
+    links {
+    }
 
-pub trait Backend where Self: Sized {
-    type K: Eq;
-    type V;
+    // Automatic conversions between this error chain and other
+    // error types not defined by the `error_chain!`. These will be
+    // boxed as the error cause and wrapped in a new error with,
+    // in this case, the `ErrorKind::Temp` variant.
+    //
+    // This section can be empty.
+    foreign_links {
 
-    fn get<Q: ?Sized>(&self, k: &Q) -> Option<&Self::V> where Self::K: Borrow<Q>, Q: Eq + Hash, Self : Sized;
-    fn set(&mut self, k: Self::K, v: Self::V) -> Option<Self::V>;
-    fn delete<Q: ?Sized>(&mut self, k: &Q) -> Option<Self::V> where Self::K: Borrow<Q>, Q: Eq + Hash, Self : Sized;
+    }
+
+    // Define additional `ErrorKind` variants. The syntax here is
+    // the same as `quick_error!`, but the `from()` and `cause()`
+    // syntax is not supported.
+    errors {
+        DocumentNotAvailable(key: String) {
+            description("Document requested was not available")
+            display("requested key: '{}'", key)
+        }
+        DatabaseCreationError(database: String) {
+            description("Could not create database")
+            display("Error creating Database: '{}'", database)
+        }
+        UpdateConflict(id: String) {
+            description("Document conflict")
+            display("Document conflicht: '{}'", id)
+        }
+        ClientError(desc: String) {
+            description("Client error")
+            display("Client error: '{}'", desc)
+        }
+    }
 }
+
+pub type DatabaseName = String;
+
 
 pub trait Document : Deserialize + Serialize where Self : Sized {
 
@@ -115,7 +155,8 @@ impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEn
 
         match entry {
             DatabaseEntry::Present { doc: d, .. } => Ok(d),
-            _ => Err("Document not available".into()),
+            DatabaseEntry::Absent { key, .. } => Err(key.id().to_string().into()),
+            _ => panic!("collisions are unimplemented")
         }
     }
 

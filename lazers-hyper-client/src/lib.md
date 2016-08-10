@@ -9,6 +9,7 @@ extern crate lazers_traits;
 extern crate serde;
 extern crate serde_json;
 extern crate mime;
+extern crate backtrace;
 
 mod types;
 use types::document_created::DocumentCreated;
@@ -19,10 +20,11 @@ use lazers_traits::DatabaseName;
 use lazers_traits::Database;
 use lazers_traits::DatabaseState;
 use lazers_traits::DatabaseCreator;
-use lazers_traits::Error;
 use lazers_traits::Document;
 use lazers_traits::DatabaseEntry;
 use lazers_traits::Key;
+use lazers_traits::Result;
+use lazers_traits::ChainErr;
 use serde_json::de::from_reader;
 use serde_json::ser::to_string;
 
@@ -32,9 +34,9 @@ use hyper::header::ETag;
 use hyper::header::ContentType;
 
 use hyper::status::StatusCode;
+use std::sync::Arc;
 
 use url::{Url};
-
 
 pub struct HyperClient {
     inner: hyper::client::Client,
@@ -64,37 +66,34 @@ pub struct RemoteDatabase {
 impl DatabaseCreator for RemoteDatabaseCreator {
     type D = RemoteDatabase;
 
-    fn create(self) -> Result<RemoteDatabase, Error> {
+    fn create(self) -> Result<RemoteDatabase> {
         let mut url = self.base_url.clone();
         url.set_path(self.name.as_ref());
         let client = hyper::client::Client::new();
         let res = client.put(url)
                         .send();
+        try!(res.chain_err(|| self.name.clone() ));
 
-        match res {
-            Ok(_) => Ok(RemoteDatabase { name: self.name, base_url: self.base_url }),
-            Err(e) => Err(e.to_string())
-        }
+        Ok(RemoteDatabase { name: self.name, base_url: self.base_url })
     }
 }
 
 impl Database for RemoteDatabase {
     type Creator = RemoteDatabaseCreator;
 
-    fn destroy(self) -> Result<RemoteDatabaseCreator, Error> {
+    fn destroy(self) -> Result<RemoteDatabaseCreator> {
         let mut url = self.base_url.clone();
         url.set_path(self.name.as_ref());
         let client = hyper::client::Client::new();
         let res = client.delete(url)
                         .send();
 
-        match res {
-            Ok(_) => Ok(RemoteDatabaseCreator { name: self.name, base_url: self.base_url }),
-            Err(e) => Err(e.to_string())
-        }
+        try!(res.chain_err(|| self.name.clone() ));
+
+        Ok(RemoteDatabaseCreator { name: self.name, base_url: self.base_url })
     }
 
-    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, RemoteDatabase>, Error> {
+    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, RemoteDatabase>> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
         let client = hyper::client::Client::new();
@@ -111,16 +110,16 @@ impl Database for RemoteDatabase {
                         Ok(DatabaseEntry::present(key_with_rev, doc, self))
                     },
                     StatusCode::NotFound => Ok(DatabaseEntry::absent(key, self)),
-                    _ => Err(format!("unexpected status: {}", r.status))
+                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => { Err(e.to_string()) }
+            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 
     // this should probably be &doc, as Doc won't be changed, but might
     // get a new key
-    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D), Error> {
+    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)> {
         println!("{:?}", key);
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
@@ -132,7 +131,7 @@ impl Database for RemoteDatabase {
         let client = hyper::client::Client::new();
         let body = match to_string(&doc) {
                      Ok(s) => s,
-                     Err(e) => return Err(e.to_string())
+                     Err(e) => { return Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
                    };
 
         let mime: mime::Mime = "application/json".parse().unwrap();
@@ -153,18 +152,18 @@ impl Database for RemoteDatabase {
                     StatusCode::Conflict => {
                         let response_data: error::Error = from_reader(r).unwrap();
                         match response_data {
-                            error::Error::Conflict(reason) => { Err(reason) },
-                            error::Error::BadRequest(reason) => { Err(reason) },
+                            error::Error::Conflict(reason) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::UpdateConflict(format!("Document update conflict: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
+                            error::Error::BadRequest(reason) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Bad Request: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
                         }
                     }
-                    _ => Err(format!("unexpected status: {}", r.status))
+                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => Err(e.to_string())
+            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 
-    fn delete<K: Key>(&self, key: K) -> Result<(), Error> {
+    fn delete<K: Key>(&self, key: K) -> Result<()> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
         url.query_pairs_mut().append_pair("rev", key.rev().unwrap());
@@ -176,12 +175,10 @@ impl Database for RemoteDatabase {
             Ok(r) => {
                 match r.status {
                     StatusCode::Ok => { Ok(()) },
-                    _ => {
-                        Err(format!("unexpected status: {}", r.status))
-                    }
+                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => Err(e.to_string()),
+            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 }
@@ -189,7 +186,7 @@ impl Database for RemoteDatabase {
 impl Client for HyperClient {
     type Database = RemoteDatabase;
 
-    fn find_database(&self, name: DatabaseName) -> Result<DatabaseState<RemoteDatabase, RemoteDatabaseCreator>, Error> {
+    fn find_database(&self, name: DatabaseName) -> Result<DatabaseState<RemoteDatabase, RemoteDatabaseCreator>> {
         let mut url = self.base_url.clone();
         url.set_path(name.as_ref());
         let res = self.inner
@@ -201,10 +198,10 @@ impl Client for HyperClient {
                 match r.status {
                     StatusCode::Ok => Ok(DatabaseState::Existing(RemoteDatabase { name: name, base_url: self.base_url.clone() })),
                     StatusCode::NotFound => Ok(DatabaseState::Absent(RemoteDatabaseCreator { name: name, base_url: self.base_url.clone() })),
-                    _ => Err(format!("unexpected status: {}", r.status))
+                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => { Err(e.to_string()) }
+            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 }
