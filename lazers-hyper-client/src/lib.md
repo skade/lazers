@@ -23,8 +23,10 @@ use lazers_traits::DatabaseCreator;
 use lazers_traits::Document;
 use lazers_traits::DatabaseEntry;
 use lazers_traits::Key;
-use lazers_traits::Result;
-use lazers_traits::ChainErr;
+use lazers_traits::result::Result;
+use lazers_traits::result::Error;
+use lazers_traits::result::ErrorKind;
+use lazers_traits::result::ChainErr;
 use serde_json::de::from_reader;
 use serde_json::ser::to_string;
 
@@ -110,10 +112,10 @@ impl Database for RemoteDatabase {
                         Ok(DatabaseEntry::present(key_with_rev, doc, self))
                     },
                     StatusCode::NotFound => Ok(DatabaseEntry::absent(key, self)),
-                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 
@@ -131,7 +133,7 @@ impl Database for RemoteDatabase {
         let client = hyper::client::Client::new();
         let body = match to_string(&doc) {
                      Ok(s) => s,
-                     Err(e) => { return Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+                     Err(e) => { return Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
                    };
 
         let mime: mime::Mime = "application/json".parse().unwrap();
@@ -152,14 +154,14 @@ impl Database for RemoteDatabase {
                     StatusCode::Conflict => {
                         let response_data: error::Error = from_reader(r).unwrap();
                         match response_data {
-                            error::Error::Conflict(reason) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::UpdateConflict(format!("Document update conflict: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
-                            error::Error::BadRequest(reason) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Bad Request: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
+                            error::Error::Conflict(reason) => { Err(Error(ErrorKind::UpdateConflict(format!("Document update conflict: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
+                            error::Error::BadRequest(reason) => { Err(Error(ErrorKind::ClientError(format!("Bad Request: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
                         }
                     }
-                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 
@@ -175,10 +177,10 @@ impl Database for RemoteDatabase {
             Ok(r) => {
                 match r.status {
                     StatusCode::Ok => { Ok(()) },
-                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 }
@@ -198,10 +200,10 @@ impl Client for HyperClient {
                 match r.status {
                     StatusCode::Ok => Ok(DatabaseState::Existing(RemoteDatabase { name: name, base_url: self.base_url.clone() })),
                     StatusCode::NotFound => Ok(DatabaseState::Absent(RemoteDatabaseCreator { name: name, base_url: self.base_url.clone() })),
-                    _ => Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
                 }
             },
-            Err(e) => { Err(lazers_traits::Error(lazers_traits::ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
         }
     }
 }
@@ -297,7 +299,7 @@ fn test_database_create_document() {
             _ => { }
         };
 
-        //assert!(set_res.is_ok());
+        assert!(set_res.is_ok());
     } else {
         panic!("database not existing!")
     }
