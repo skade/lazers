@@ -5,6 +5,7 @@ extern crate serde;
 #[macro_use] extern crate error_chain;
 
 pub mod result;
+pub mod prelude;
 
 use result::Result;
 

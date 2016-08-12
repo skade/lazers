@@ -15,18 +15,8 @@ mod types;
 use types::document_created::DocumentCreated;
 use types::error;
 
-use lazers_traits::Client;
-use lazers_traits::DatabaseName;
-use lazers_traits::Database;
-use lazers_traits::DatabaseState;
-use lazers_traits::DatabaseCreator;
-use lazers_traits::Document;
-use lazers_traits::DatabaseEntry;
-use lazers_traits::Key;
-use lazers_traits::result::Result;
-use lazers_traits::result::Error;
-use lazers_traits::result::ErrorKind;
-use lazers_traits::result::ChainErr;
+use lazers_traits::prelude::*;
+
 use serde_json::de::from_reader;
 use serde_json::ser::to_string;
 
