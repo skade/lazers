@@ -25,14 +25,27 @@ use lazers_traits::DatabaseResult;
 use hyper::header::ETag;
 use hyper::header::ContentType;
 
+use hyper::client::IntoUrl;
+
 use hyper::status::StatusCode;
 use std::sync::Arc;
 
-use url::{Url};
+use url::{Url, ParseError};
 
 pub struct HyperClient {
     inner: hyper::client::Client,
     base_url: Url,
+}
+
+impl HyperClient {
+    pub fn new<T: IntoUrl>(url: T) -> std::result::Result<HyperClient, ParseError> {
+        Ok(
+          HyperClient {
+              inner: hyper::client::Client::new(),
+              base_url: try!(url.into_url())
+          }
+        )
+    }
 }
 
 impl Default for HyperClient {
