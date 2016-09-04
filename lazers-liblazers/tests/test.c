@@ -1,8 +1,9 @@
-#include "../include/my_header.h"
+#include "../include/lazers.h"
 
 int main (int argc, char const *argv[])
 {
-        lzrs_client* c = lzrs_new_hyper_client();
-        lzrs_inspect_client(c);
-        lzrs_close(c);
+        CClient* c = lzrs_new_hyper_client();
+        c->inspect(c->client);
+        c->get(c->client, "foobar");
+        c->close(c);
 }
