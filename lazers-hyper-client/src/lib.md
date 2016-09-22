@@ -20,8 +20,6 @@ use lazers_traits::prelude::*;
 use serde_json::de::from_reader;
 use serde_json::ser::to_string;
 
-use lazers_traits::DatabaseResult;
-
 use hyper::header::ETag;
 use hyper::header::ContentType;
 
@@ -275,7 +273,6 @@ fn test_database_get_document() {
 fn test_database_create_document() {
     use lazers_traits::SimpleKey;
     use serde_json::Value;
-    use lazers_traits::DocumentResult;
 
     let client = HyperClient::default();
     let res = client.find_database("empty_test_db".to_string())

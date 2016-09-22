@@ -8,9 +8,6 @@ build = "tango-build.rs"
 [dependencies]
 hyper = "*"
 
-[dependencies.lazers-db]
-path = "../lazers-db"
-
 [dependencies.lazers-changes-stream]
 path = "../lazers-changes-stream"
 

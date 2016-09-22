@@ -1,0 +1,2 @@
+[workspace]
+members = ["lazers-changes-stream", "lazers-traits", "lazers-replicator", "lazers-liblazers", "lazers-hyper-client"]

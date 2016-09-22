@@ -37,41 +37,76 @@ use types::changes_lines::{ChangesLines};
 
 ### `ChangesStream`
 
-The `ChangesStream` type allows us
+Provides reading of the CouchDB wire protocol from any stream that implements `Read`.
+
+It is generic over the kinds of documents included in the changes stream, as long as they implement "Deserialize".
 
 ```rust
-pub struct ChangesStream<T: Read, D: Deserialize> {
-    source: Lines<BufReader<T>>,
-    documents: PhantomData<D>
+/// A handle on a changes stream. Provides reading of events from a source of /// type and holds type information about the documents expected.
+pub struct ChangesStream<Source: Read, Documents: Deserialize> {
+    source: Lines<BufReader<Source>>,
+    documents: PhantomData<Documents>
 }
+```
+### `Full`
 
-pub struct Full<T: Read, D: Deserialize> {
-    stream: ChangesStream<T, D>
+The `Full` interface gives raw access to all events happening in the changes stream. This includes `LastSeq` documents, that are intended for internal tracking.
+
+```rust
+/// Wrapper for a ChangesStream with full access.
+pub struct Full<Source: Read, Documents: Deserialize> {
+    stream: ChangesStream<Source, Documents>
 }
+```
 
-pub struct Changes<T: Read, D: Deserialize> {
-    stream: Full<T, D>
+### `Changes`
+
+`Changes` only includes actual document changes and no protocol information. Most notably, it filters out `LastSeq` messages.
+
+```rust
+/// Wrapper for a ChangesStream only returning `Change` documents.
+pub struct Changes<Source: Read, Documents: Deserialize> {
+    stream: Full<Source, Documents>
 }
+```
 
-impl<T: Read, D: Deserialize> ChangesStream<T,D> {
-    pub fn new(source: T) -> ChangesStream<T,D> {
+The implementation of the `ChangesStream` is intended as a proxy only, it is constructed and then the user selects if the full stream or only changes are wanted. Folding `Full` and `ChangesStream` into one was considered, but not used as this provides a symmetric interface, even though `Changes` internally relies on full.
+
+```rust
+impl<Source: Read, Documents: Deserialize> ChangesStream<Source,Documents> {
+    /// Construct a new changes stream out of every `read` source.
+    /// `Documents` needs to be any deserializable type.
+    pub fn new(source: Source) -> ChangesStream<Source,Documents> {
         ChangesStream { source: BufReader::new(source).lines(), documents: PhantomData }
     }
 
-    pub fn full(self) -> Full<T, D> {
+    /// Get an iterator to iterate over the full changes stream, including
+    /// control events. 
+    pub fn full(self) -> Full<Source, Documents> {
         Full { stream: self }
     }
 
-    pub fn changes(self) -> Changes<T, D> {
+    /// Get an iterator to just read the changes out of the stream, without
+    /// control events.
+    pub fn changes(self) -> Changes<Source, Documents> {
         Changes { stream: self.full() }
     }
 }
+```
 
-impl<T: Read, D: Deserialize> Iterator for Full<T, D> {
-    type Item = ChangesLines<D>;
+### Iterator implementations
+
+The iterator implementations are rather straight forward, with `Full` delegating
+to `ChangesLines` for parsing and unwrapping its results.
+
+Note that this implementation silently eats errors (including connection errors!) currently.
+
+```rust
+impl<Source: Read, Documents: Deserialize> Iterator for Full<Source, Documents> {
+    type Item = ChangesLines<Documents>;
 
     #[inline]
-    fn next(&mut self) -> Option<ChangesLines<D>> {
+    fn next(&mut self) -> Option<ChangesLines<Documents>> {
         if let Some(elem) = self.stream.source.next() {
             elem.ok().iter()
                 .filter_map(|line| {
@@ -84,11 +119,11 @@ impl<T: Read, D: Deserialize> Iterator for Full<T, D> {
     }
 }
 
-impl<T: Read, D: Deserialize> Iterator for Changes<T, D> {
-    type Item = Change<D>;
+impl<Source: Read, Documents: Deserialize> Iterator for Changes<Source, Documents> {
+    type Item = Change<Documents>;
 
     #[inline]
-    fn next(&mut self) -> Option<Change<D>> {
+    fn next(&mut self) -> Option<Change<Documents>> {
         if let Some(next) = self.stream.next() {
             next.to_change()
         } else {
