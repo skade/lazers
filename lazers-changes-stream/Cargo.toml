@@ -17,3 +17,4 @@ tango = "0.5.0"
 
 [lib]
 name = "lazers_changes_stream"
+path = "src/lib.rs"
