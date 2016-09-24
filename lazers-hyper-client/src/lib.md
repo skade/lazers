@@ -2,6 +2,12 @@
 
 A CouchDB client implemented using hyper.
 
+This is currently a draft implementation that suffers from a few problems,
+mainly that generating the errors hooking into lazers-traits a bit noisy.
+
+This crate itself holds no logic outside of HTTP handling, the description of all workflows is in lazers-traits.
+
+
 ```rust
 extern crate hyper;
 extern crate url;
@@ -113,10 +119,10 @@ impl Database for RemoteDatabase {
                         Ok(DatabaseEntry::present(key_with_rev, doc, self))
                     },
                     StatusCode::NotFound => Ok(DatabaseEntry::absent(key, self)),
-                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
                 }
             },
-            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
         }
     }
 
@@ -134,7 +140,7 @@ impl Database for RemoteDatabase {
         let client = hyper::client::Client::new();
         let body = match to_string(&doc) {
                      Ok(s) => s,
-                     Err(e) => { return Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+                     Err(e) => { return hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
                    };
 
         let mime: mime::Mime = "application/json".parse().unwrap();
@@ -155,14 +161,15 @@ impl Database for RemoteDatabase {
                     StatusCode::Conflict => {
                         let response_data: error::Error = from_reader(r).unwrap();
                         match response_data {
-                            error::Error::Conflict(reason) => { Err(Error(ErrorKind::UpdateConflict(format!("Document update conflict: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
-                            error::Error::BadRequest(reason) => { Err(Error(ErrorKind::ClientError(format!("Bad Request: {}", reason)), (None, Arc::new(backtrace::Backtrace::new())))) },
+                            error::Error::Conflict(reason) => { conflict(format!("Document update conflict: {}", reason), backtrace::Backtrace::new()) },
+                            error::Error::BadRequest(reason) => {
+                            error(format!("Bad request: {}", reason), backtrace::Backtrace::new()) },
                         }
                     }
-                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
                 }
             },
-            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
         }
     }
 
@@ -178,10 +185,10 @@ impl Database for RemoteDatabase {
             Ok(r) => {
                 match r.status {
                     StatusCode::Ok => { Ok(()) },
-                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
                 }
             },
-            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => {  hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
         }
     }
 }
@@ -201,107 +208,24 @@ impl Client for HyperClient {
                 match r.status {
                     StatusCode::Ok => Ok(DatabaseState::Existing(RemoteDatabase { name: name, base_url: self.base_url.clone() })),
                     StatusCode::NotFound => Ok(DatabaseState::Absent(RemoteDatabaseCreator { name: name, base_url: self.base_url.clone() })),
-                    _ => Err(Error(ErrorKind::ClientError(format!("Unexpected status: {}", r.status)), (None, Arc::new(backtrace::Backtrace::new()))))
+                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
                 }
             },
-            Err(e) => { Err(Error(ErrorKind::ClientError(format!("Unexpected HTTP error")), (Some(Box::new(e)), Arc::new(backtrace::Backtrace::new())))) }
+            Err(e) => { hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
         }
     }
 }
-```
 
-Let's write some tests! \o/
-
-
-```rust
-#[test]
-fn test_database_lookup() {
-    let client = HyperClient::default();
-    let res = client.find_database("absent".to_string());
-    assert!(res.is_ok());
+fn hyper_error<T, E: std::error::Error + Send + 'static>(message: String, error: E, backtrace: backtrace::Backtrace) -> Result<T> {
+    Err(Error(ErrorKind::ClientError(message), (Some(Box::new(error)), Arc::new(backtrace))))
 }
 
-#[test]
-fn test_database_absent() {
-    let client = HyperClient::default();
-    let res = client.find_database("absent".to_string());
-    assert!(res.is_ok());
-    assert!(res.unwrap().absent())
+fn error<T>(message: String, backtrace: backtrace::Backtrace) -> Result<T> {
+    Err(Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace))))
 }
 
-#[test]
-fn test_database_create() {
-    let client = HyperClient::default();
-    let res = client.find_database("to_be_created".to_string())
-                    .or_create();
-    assert!(res.is_ok());
-    assert!(res.unwrap().existing())
+fn conflict<T>(message: String, backtrace: backtrace::Backtrace) -> Result<T> {
+    Err(Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace))))
 }
 
-#[test]
-fn test_database_create_and_delete() {
-    let client = HyperClient::default();
-    let res = client.find_database("to_be_deleted".to_string())
-                    .or_create()
-                    .and_delete();
-    assert!(res.is_ok());
-    assert!(res.unwrap().absent())
-}
-
-#[test]
-fn test_database_get_document() {
-    use lazers_traits::SimpleKey;
-    use serde_json::Value;
-
-    let client = HyperClient::default();
-    let res = client.find_database("empty_test_db".to_string())
-                    .or_create();
-    assert!(res.is_ok());
-    let db = res.unwrap();
-    assert!(db.existing());
-
-    if let DatabaseState::Existing(db) = db {
-        let key = SimpleKey::from("test".to_owned());
-        let doc_res = db.doc::<SimpleKey, Value>(key);
-        assert!(doc_res.is_ok());
-    } else {
-        panic!("database not existing!")
-    }
-}
-
-#[test]
-fn test_database_create_document() {
-    use lazers_traits::SimpleKey;
-    use serde_json::Value;
-
-    let client = HyperClient::default();
-    let res = client.find_database("empty_test_db".to_string())
-                    .and_delete()
-                    .or_create();
-    assert!(res.is_ok());
-    let db = res.unwrap();
-    assert!(db.existing());
-
-    if let DatabaseState::Existing(db) = db {
-        let key = SimpleKey::from("test-will-be-created".to_owned());
-        let s = "{\"x\": 1.0, \"y\": 2.0}";
-        let value: Value = serde_json::from_str(s).unwrap();
-        let doc_res = db.doc(key);
-        assert!(doc_res.is_ok());
-
-        let del_res = doc_res.delete();
-        assert!(del_res.is_ok());
-
-        let set_res = del_res.set(value);
-
-        match set_res {
-            Err(e) => {println!("{}", e); panic!()},
-            _ => { }
-        };
-
-        assert!(set_res.is_ok());
-    } else {
-        panic!("database not existing!")
-    }
-}
 ```
