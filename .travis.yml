@@ -1,5 +1,6 @@
 language: rust
 cache: cargo
+services: couchdb
 sudo: false
 rust:
   - 1.11.0

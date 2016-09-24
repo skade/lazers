@@ -20,4 +20,5 @@ rusty-cheddar = "0.3.0"
 
 [lib]
 crate-type = ["dylib"]
-name = "lazers"
+name = "lazers_liblazers"
+path = "src/lib.rs"
