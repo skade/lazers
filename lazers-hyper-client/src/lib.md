@@ -5,7 +5,8 @@ A CouchDB client implemented using hyper.
 This is currently a draft implementation that suffers from a few problems,
 mainly that generating the errors hooking into lazers-traits a bit noisy.
 
-This crate itself holds no logic outside of HTTP handling, the description of all workflows is in lazers-traits.
+This crate itself holds no logic outside of HTTP handling, the description of
+all workflows is in lazers-traits.
 
 
 ```rust

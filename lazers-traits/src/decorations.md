@@ -27,9 +27,13 @@ use result::Result;
 `FindDatabaseResult` decorates the result returned from finding a database. The
 operations provided are `or_create` and `and_delete`.
 
-`or_create` creates the database if it was not present, otherwise, it just returns the already-existing database. If and error occured in a previous step, the error is passed through and no attempt to create the database is undertaken.
+`or_create` creates the database if it was not present, otherwise, it just
+returns the already-existing database. If and error occured in a previous step,
+the error is passed through and no attempt to create the database is undertaken.
 
-`and_delete` delete the database if it is present, otherwise, it just returns the already absent state. If and error occured in a previous step, the error is passed through and no attempt to create the database is undertaken.
+`and_delete` delete the database if it is present, otherwise, it just returns
+the already absent state. If and error occured in a previous step, the error is
+passed through and no attempt to create the database is undertaken.
 
 
 ```rust
@@ -45,7 +49,7 @@ impl<D: Database> FindDatabaseResult for Result<DatabaseState<D, D::Creator>> {
 
     fn or_create(self) -> Self {
         let state = try!(self);
-        
+
         match state {
             DatabaseState::Existing(d) => Ok(DatabaseState::Existing(d)),
             DatabaseState::Absent(creator) => {
@@ -58,7 +62,7 @@ impl<D: Database> FindDatabaseResult for Result<DatabaseState<D, D::Creator>> {
 
     fn and_delete(self) -> Self {
         let state = try!(self);
-    
+
         match state {
             DatabaseState::Absent(c) => Ok(DatabaseState::Absent(c)),
             DatabaseState::Existing(d) => {
@@ -73,13 +77,21 @@ impl<D: Database> FindDatabaseResult for Result<DatabaseState<D, D::Creator>> {
 
 ### Results of retrieving documents
 
-`DocumentResult` decorates the result returned from retrieving a document from. The operations provided are `get`, `set` and `delete`. If the result is already describing an error, that error is propagated.
+`DocumentResult` decorates the result returned from retrieving a document from.
+The operations provided are `get`, `set` and `delete`. If the result is already
+describing an error, that error is propagated.
 
-`get` retrieves the document from the result and passes ownership to the caller. It consumes the result. Getting an absent document or a collided document is an error.
+`get` retrieves the document from the result and passes ownership to the
+caller. It consumes the result. Getting an absent document or a collided
+document is an error.
 
-`set` changes the document stored under the given key.  It consumes the result and returns another one instead, describing the new state of the document or possibly an error.
+`set` changes the document stored under the given key. It consumes the result
+and returns another one instead, describing the new state of the document or
+possibly an error.
 
-`delete` deletes the document stored under the given key. It consumes the result and returns another one instead, describing the new state of the document or possibly an error.
+`delete` deletes the document stored under the given key. It consumes the
+result and returns another one instead, describing the new state of the
+document or possibly an error.
 
 ```rust
 pub trait DocumentResult {
