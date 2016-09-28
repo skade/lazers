@@ -2,10 +2,10 @@
 
 set -e
 
+ruby build.rb
+
 # Make a new repo for the gh-pages branch
 cd doc
-
-crowbook book.crow
 
 git init
 # Add, commit and push files

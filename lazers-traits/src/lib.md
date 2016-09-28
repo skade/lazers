@@ -39,14 +39,14 @@ extern crate error_chain;
 
 The library exports two modules.
 
-`result` defines our own `Result` type. See the module page for details.
+[`result`](result) defines our own `Result` type. See the module page for details.
 
-`prelude` exports all definitions needed for day-to-day work, this allows
+[`prelude`](prelude) exports all definitions needed for day-to-day work, this allows
 users
 to simply `use lazers_traits::prelude::*` instead of loading a huge block of
 codes imports themselves.
 
-`decorations` collects all convenience decorations of the library on, for
+[`decorations`](decorations) collects all convenience decorations of the library on, for
 example, `Result` types.
 
 ```rust

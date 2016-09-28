@@ -31,21 +31,21 @@ This hasn't been followed through in the past and has been fixed, but there migh
 
 Decorated results allow a form of result chaining that hides error handling until the very last step.
 
-See [TODO] about how decorated results work.
+See [yakshav.es/decorating-results/](http://yakshav.es/decorating-results/) about how decorated results work.
 
 ## Current Setup
 
 The project currently consists of the following crates:
 
-* [lazers-traits](lazers-traits): A set of traits without implementations that describe the general interface towards a CouchDB(-like) database. It defines error and result types and interactions for writing and reading documents.
+* [lazers-traits](http://laze.rs/lazers-traits/src/lib/): A set of traits without implementations that describe the general interface towards a CouchDB(-like) database. It defines error and result types and interactions for writing and reading documents.
 
-* [lazers-hyper-client](lazers-hyper-client): A client implementing lazers-traits for a remote CouchDB using hyper. Currently also serves as an implementation example for the interface described in lazers-traits.
+* [lazers-hyper-client](http://laze.rs/lazers-hyper-client/src/lib/): A client implementing lazers-traits for a remote CouchDB using hyper. Currently also serves as an implementation example for the interface described in lazers-traits.
 
-* [lazers-changes-stream](lazers-changes-stream): An implementation of the CouchDB changes stream protocol. It is generic over any `Read` interface, so it depends on no http client.
+* [lazers-changes-stream](http://laze.rs/lazers-changes-stream/src/lib/): An implementation of the CouchDB changes stream protocol. It is generic over any `Read` interface, so it depends on no http client.
 
-* [lazers-replicator](lazers-replicator): A (currently unfinished) implementation of the CouchDB replication protocol. Important features of the base libraries were missing, but it is still around as a placeholder or as a way to start.
+* [lazers-replicator](http://laze.rs/lazers-replicator/src/lib/): A (currently unfinished) implementation of the CouchDB replication protocol. Important features of the base libraries were missing, but it is still around as a placeholder or as a way to start.
 
-* [lazers-liblazers](lazers-liblazers): A C interface to the library. Still figuring a good way to do this. This interface is important, see [Long-Term Goals]
+* [lazers-liblazers](http://laze.rs/lazers-liblazers/src/lib/): A C interface to the library. Still figuring a good way to do this. This interface is important, see [Long-Term Goals]
 
 ## Notably missing
 
