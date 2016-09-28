@@ -11,14 +11,16 @@ used on top of HTTP requests or just File input.
 
 ## Imports
 
-The module abstracts of raw streams that implement `Read`, but works linewise.
+The module abstracts of raw streams that implement `Read`, but works
+linewise.
 This set of traits is needed to make that convenient.
 
 ```rust
-use std::io::{BufRead,BufReader,Read,Lines};
+use std::io::{BufRead, BufReader, Read, Lines};
 ```
 
-The module abstracts over types as parsing information. They are not stored as
+The module abstracts over types as parsing information. They are not stored
+as
 data itself, so we need PhantomData fields here.
 
 ```rust
@@ -32,29 +34,32 @@ fully sure if simpler json libs could be allowed for the payload data.
 use serde::de::Deserialize;
 ```
 
-We use both out own `Change` and `ChangesLines` types. `Change` is any document
+We use both out own `Change` and `ChangesLines` types. `Change` is any
+document
 change, `ChangesLines` holds _all_ lines of the changes stream.
 
 ```rust
-use types::change::{Change};
-use types::changes_lines::{ChangesLines};
+use types::change::Change;
+use types::changes_lines::ChangesLines;
 ```
 
 ## Definitions
 
 ### `ChangesStream`
 
-Provides reading of the CouchDB wire protocol from any stream that implements
+Provides reading of the CouchDB wire protocol from any stream that
+implements
 `Read`.
 
 It is generic over the kinds of documents included in the changes stream, as
 long as they implement "Deserialize".
 
 ```rust
-/// A handle on a changes stream. Provides reading of events from a source of /// type and holds type information about the documents expected.
+/// A handle on a changes stream. Provides reading of events from a source of
+/// type and holds type information about the documents expected.
 pub struct ChangesStream<Source: Read, Documents: Deserialize> {
     source: Lines<BufReader<Source>>,
-    documents: PhantomData<Documents>
+    documents: PhantomData<Documents>,
 }
 ```
 ### `Full`
@@ -66,7 +71,7 @@ tracking.
 ```rust
 /// Wrapper for a ChangesStream with full access.
 pub struct Full<Source: Read, Documents: Deserialize> {
-    stream: ChangesStream<Source, Documents>
+    stream: ChangesStream<Source, Documents>,
 }
 ```
 
@@ -78,26 +83,30 @@ Most notably, it filters out `LastSeq` messages.
 ```rust
 /// Wrapper for a ChangesStream only returning `Change` documents.
 pub struct Changes<Source: Read, Documents: Deserialize> {
-    stream: Full<Source, Documents>
+    stream: Full<Source, Documents>,
 }
 ```
 
 The implementation of the `ChangesStream` is intended as a proxy only, it is
 constructed and then the user selects if the full stream or only changes are
 wanted. Folding `Full` and `ChangesStream` into one was considered, but not
-used as this provides a symmetric interface, even though `Changes` internally
+used as this provides a symmetric interface, even though `Changes`
+internally
 relies on full.
 
 ```rust
-impl<Source: Read, Documents: Deserialize> ChangesStream<Source,Documents> {
+impl<Source: Read, Documents: Deserialize> ChangesStream<Source, Documents> {
     /// Construct a new changes stream out of every `read` source.
     /// `Documents` needs to be any deserializable type.
-    pub fn new(source: Source) -> ChangesStream<Source,Documents> {
-        ChangesStream { source: BufReader::new(source).lines(), documents: PhantomData }
+    pub fn new(source: Source) -> ChangesStream<Source, Documents> {
+        ChangesStream {
+            source: BufReader::new(source).lines(),
+            documents: PhantomData,
+        }
     }
 
     /// Get an iterator to iterate over the full changes stream, including
-    /// control events. 
+    /// control events.
     pub fn full(self) -> Full<Source, Documents> {
         Full { stream: self }
     }
@@ -112,7 +121,8 @@ impl<Source: Read, Documents: Deserialize> ChangesStream<Source,Documents> {
 
 ### Iterator implementations
 
-The iterator implementations are rather straight forward, with `Full` delegating
+The iterator implementations are rather straight forward, with `Full`
+delegating
 to `ChangesLines` for parsing and unwrapping its results.
 
 Note that this implementation silently eats errors (including connection
@@ -125,10 +135,10 @@ impl<Source: Read, Documents: Deserialize> Iterator for Full<Source, Documents> 
     #[inline]
     fn next(&mut self) -> Option<ChangesLines<Documents>> {
         if let Some(elem) = self.stream.source.next() {
-            elem.ok().iter()
-                .filter_map(|line| {
-                    ChangesLines::parse(line).ok()
-                }).nth(0)
+            elem.ok()
+                .iter()
+                .filter_map(|line| ChangesLines::parse(line).ok())
+                .nth(0)
         } else {
             None
         }

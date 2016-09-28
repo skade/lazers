@@ -5,7 +5,8 @@ A CouchDB client implemented using hyper.
 This is currently a draft implementation that suffers from a few problems,
 mainly that generating the errors hooking into lazers-traits a bit noisy.
 
-This crate itself holds no logic outside of HTTP handling, the description of
+This crate itself holds no logic outside of HTTP handling, the description
+of
 all workflows is in lazers-traits.
 
 
@@ -44,12 +45,10 @@ pub struct HyperClient {
 
 impl HyperClient {
     pub fn new<T: IntoUrl>(url: T) -> std::result::Result<HyperClient, ParseError> {
-        Ok(
-          HyperClient {
-              inner: hyper::client::Client::new(),
-              base_url: try!(url.into_url())
-          }
-        )
+        Ok(HyperClient {
+            inner: hyper::client::Client::new(),
+            base_url: try!(url.into_url()),
+        })
     }
 }
 
@@ -57,20 +56,19 @@ impl Default for HyperClient {
     fn default() -> HyperClient {
         HyperClient {
             inner: hyper::client::Client::new(),
-            base_url: Url::parse("http://localhost:5984")
-                          .expect("this is a valid URL")
+            base_url: Url::parse("http://localhost:5984").expect("this is a valid URL"),
         }
     }
 }
 
 pub struct RemoteDatabaseCreator {
     name: DatabaseName,
-    base_url: Url
+    base_url: Url,
 }
 
 pub struct RemoteDatabase {
     name: DatabaseName,
-    base_url: Url
+    base_url: Url,
 }
 
 impl DatabaseCreator for RemoteDatabaseCreator {
@@ -81,10 +79,13 @@ impl DatabaseCreator for RemoteDatabaseCreator {
         url.set_path(self.name.as_ref());
         let client = hyper::client::Client::new();
         let res = client.put(url)
-                        .send();
-        try!(res.chain_err(|| self.name.clone() ));
+            .send();
+        try!(res.chain_err(|| self.name.clone()));
 
-        Ok(RemoteDatabase { name: self.name, base_url: self.base_url })
+        Ok(RemoteDatabase {
+            name: self.name,
+            base_url: self.base_url,
+        })
     }
 }
 
@@ -96,34 +97,47 @@ impl Database for RemoteDatabase {
         url.set_path(self.name.as_ref());
         let client = hyper::client::Client::new();
         let res = client.delete(url)
-                        .send();
+            .send();
 
-        try!(res.chain_err(|| self.name.clone() ));
+        try!(res.chain_err(|| self.name.clone()));
 
-        Ok(RemoteDatabaseCreator { name: self.name, base_url: self.base_url })
+        Ok(RemoteDatabaseCreator {
+            name: self.name,
+            base_url: self.base_url,
+        })
     }
 
-    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, RemoteDatabase>> {
+    fn doc<'a, K: Key, D: Document>(&'a self,
+                                    key: K)
+                                    -> Result<DatabaseEntry<'a, K, D, RemoteDatabase>> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
         let client = hyper::client::Client::new();
         let res = client.get(url)
-                        .send();
+            .send();
 
         match res {
             Ok(r) => {
                 match r.status {
                     StatusCode::Ok => {
                         let rev = r.headers.get::<ETag>().unwrap().clone();
-                        let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(), Some(rev.tag().to_owned()));
+                        let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(),
+                                                                       Some(rev.tag().to_owned()));
                         let doc = from_reader(r).unwrap();
                         Ok(DatabaseEntry::present(key_with_rev, doc, self))
-                    },
+                    }
                     StatusCode::NotFound => Ok(DatabaseEntry::absent(key, self)),
-                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
+                    _ => {
+                        error(format!("Unexpected status: {}", r.status),
+                              backtrace::Backtrace::new())
+                    }
                 }
-            },
-            Err(e) => { hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
+            }
+            Err(e) => {
+                hyper_error(format!("Unexpected HTTP error"),
+                            e,
+                            backtrace::Backtrace::new())
+            }
         }
     }
 
@@ -140,15 +154,19 @@ impl Database for RemoteDatabase {
 
         let client = hyper::client::Client::new();
         let body = match to_string(&doc) {
-                     Ok(s) => s,
-                     Err(e) => { return hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
-                   };
+            Ok(s) => s,
+            Err(e) => {
+                return hyper_error(format!("Unexpected HTTP error"),
+                                   e,
+                                   backtrace::Backtrace::new())
+            }
+        };
 
         let mime: mime::Mime = "application/json".parse().unwrap();
         let res = client.put(url)
-                        .header(ContentType(mime))
-                        .body(&body)
-                        .send();
+            .header(ContentType(mime))
+            .body(&body)
+            .send();
         match res {
             Ok(r) => {
                 match r.status {
@@ -162,15 +180,27 @@ impl Database for RemoteDatabase {
                     StatusCode::Conflict => {
                         let response_data: error::Error = from_reader(r).unwrap();
                         match response_data {
-                            error::Error::Conflict(reason) => { conflict(format!("Document update conflict: {}", reason), backtrace::Backtrace::new()) },
+                            error::Error::Conflict(reason) => {
+                                conflict(format!("Document update conflict: {}", reason),
+                                         backtrace::Backtrace::new())
+                            }
                             error::Error::BadRequest(reason) => {
-                            error(format!("Bad request: {}", reason), backtrace::Backtrace::new()) },
+                                error(format!("Bad request: {}", reason),
+                                      backtrace::Backtrace::new())
+                            }
                         }
                     }
-                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
+                    _ => {
+                        error(format!("Unexpected status: {}", r.status),
+                              backtrace::Backtrace::new())
+                    }
                 }
-            },
-            Err(e) => { hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
+            }
+            Err(e) => {
+                hyper_error(format!("Unexpected HTTP error"),
+                            e,
+                            backtrace::Backtrace::new())
+            }
         }
     }
 
@@ -180,16 +210,23 @@ impl Database for RemoteDatabase {
         url.query_pairs_mut().append_pair("rev", key.rev().unwrap());
         let client = hyper::client::Client::new();
         let res = client.delete(url)
-                        .send();
+            .send();
 
         match res {
             Ok(r) => {
                 match r.status {
-                    StatusCode::Ok => { Ok(()) },
-                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
+                    StatusCode::Ok => Ok(()),
+                    _ => {
+                        error(format!("Unexpected status: {}", r.status),
+                              backtrace::Backtrace::new())
+                    }
                 }
-            },
-            Err(e) => {  hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
+            }
+            Err(e) => {
+                hyper_error(format!("Unexpected HTTP error"),
+                            e,
+                            backtrace::Backtrace::new())
+            }
         }
     }
 }
@@ -197,28 +234,51 @@ impl Database for RemoteDatabase {
 impl Client for HyperClient {
     type Database = RemoteDatabase;
 
-    fn find_database(&self, name: DatabaseName) -> Result<DatabaseState<RemoteDatabase, RemoteDatabaseCreator>> {
+    fn find_database(&self,
+                     name: DatabaseName)
+                     -> Result<DatabaseState<RemoteDatabase, RemoteDatabaseCreator>> {
         let mut url = self.base_url.clone();
         url.set_path(name.as_ref());
         let res = self.inner
-                      .head(url)
-                      .send();
+            .head(url)
+            .send();
 
         match res {
             Ok(r) => {
                 match r.status {
-                    StatusCode::Ok => Ok(DatabaseState::Existing(RemoteDatabase { name: name, base_url: self.base_url.clone() })),
-                    StatusCode::NotFound => Ok(DatabaseState::Absent(RemoteDatabaseCreator { name: name, base_url: self.base_url.clone() })),
-                    _ => error(format!("Unexpected status: {}", r.status), backtrace::Backtrace::new())
+                    StatusCode::Ok => {
+                        Ok(DatabaseState::Existing(RemoteDatabase {
+                            name: name,
+                            base_url: self.base_url.clone(),
+                        }))
+                    }
+                    StatusCode::NotFound => {
+                        Ok(DatabaseState::Absent(RemoteDatabaseCreator {
+                            name: name,
+                            base_url: self.base_url.clone(),
+                        }))
+                    }
+                    _ => {
+                        error(format!("Unexpected status: {}", r.status),
+                              backtrace::Backtrace::new())
+                    }
                 }
-            },
-            Err(e) => { hyper_error(format!("Unexpected HTTP error"), e, backtrace::Backtrace::new()) }
+            }
+            Err(e) => {
+                hyper_error(format!("Unexpected HTTP error"),
+                            e,
+                            backtrace::Backtrace::new())
+            }
         }
     }
 }
 
-fn hyper_error<T, E: std::error::Error + Send + 'static>(message: String, error: E, backtrace: backtrace::Backtrace) -> Result<T> {
-    Err(Error(ErrorKind::ClientError(message), (Some(Box::new(error)), Arc::new(backtrace))))
+fn hyper_error<T, E: std::error::Error + Send + 'static>(message: String,
+                                                         error: E,
+                                                         backtrace: backtrace::Backtrace)
+                                                         -> Result<T> {
+    Err(Error(ErrorKind::ClientError(message),
+              (Some(Box::new(error)), Arc::new(backtrace))))
 }
 
 fn error<T>(message: String, backtrace: backtrace::Backtrace) -> Result<T> {
@@ -228,5 +288,4 @@ fn error<T>(message: String, backtrace: backtrace::Backtrace) -> Result<T> {
 fn conflict<T>(message: String, backtrace: backtrace::Backtrace) -> Result<T> {
     Err(Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace))))
 }
-
 ```

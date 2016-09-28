@@ -10,14 +10,14 @@ pub struct Change<T: Deserialize> {
     id: String,
     changes: Vec<Revision>,
     doc: Option<T>,
-    deleted: bool
+    deleted: bool,
 }
 
 impl<T: Deserialize> Deserialize for Change<T> {
     fn deserialize<D>(deserializer: &mut D) -> Result<Change<T>, D::Error>
-        where D: serde::Deserializer,
+        where D: serde::Deserializer
     {
-        deserializer.deserialize(ChangeVisitor { phantom: PhantomData } )
+        deserializer.deserialize(ChangeVisitor { phantom: PhantomData })
     }
 }
 
@@ -26,7 +26,7 @@ enum ChangeField {
     Id,
     Changes,
     Doc,
-    Deleted
+    Deleted,
 }
 
 impl serde::Deserialize for ChangeField {
@@ -47,7 +47,12 @@ impl serde::Deserialize for ChangeField {
                     "changes" => Ok(ChangeField::Changes),
                     "doc" => Ok(ChangeField::Doc),
                     "deleted" => Ok(ChangeField::Deleted),
-                    _ => Err(serde::de::Error::unknown_field(format!("expected seq, id, changes or deleted field, got: {}", value).as_ref())),
+                    _ => {
+                        Err(serde::de::Error::unknown_field(format!("expected seq, id, changes \
+                                                                     or deleted field, got: {}",
+                                                                    value)
+                            .as_ref()))
+                    }
                 }
             }
         }
@@ -57,7 +62,7 @@ impl serde::Deserialize for ChangeField {
 }
 
 pub struct ChangeVisitor<T: Deserialize> {
-    phantom: PhantomData<T>
+    phantom: PhantomData<T>,
 }
 
 impl<T: Deserialize> serde::de::Visitor for ChangeVisitor<T> {
@@ -74,12 +79,24 @@ impl<T: Deserialize> serde::de::Visitor for ChangeVisitor<T> {
 
         loop {
             match try!(visitor.visit_key()) {
-                Some(ChangeField::Seq) => { seq = Some(try!(visitor.visit_value())); }
-                Some(ChangeField::Id) => { id = Some(try!(visitor.visit_value())); }
-                Some(ChangeField::Changes) => { changes = Some(try!(visitor.visit_value())); }
-                Some(ChangeField::Doc) => { doc = Some(try!(visitor.visit_value())); }
-                Some(ChangeField::Deleted) => { deleted = Some(try!(visitor.visit_value())); }
-                None => { break; }
+                Some(ChangeField::Seq) => {
+                    seq = Some(try!(visitor.visit_value()));
+                }
+                Some(ChangeField::Id) => {
+                    id = Some(try!(visitor.visit_value()));
+                }
+                Some(ChangeField::Changes) => {
+                    changes = Some(try!(visitor.visit_value()));
+                }
+                Some(ChangeField::Doc) => {
+                    doc = Some(try!(visitor.visit_value()));
+                }
+                Some(ChangeField::Deleted) => {
+                    deleted = Some(try!(visitor.visit_value()));
+                }
+                None => {
+                    break;
+                }
             }
         }
 
@@ -110,7 +127,13 @@ impl<T: Deserialize> serde::de::Visitor for ChangeVisitor<T> {
 
         try!(visitor.end());
 
-        Ok(Change { seq: seq, id: id, changes: changes, doc: doc, deleted: deleted})
+        Ok(Change {
+            seq: seq,
+            id: id,
+            changes: changes,
+            doc: doc,
+            deleted: deleted,
+        })
     }
 }
 ```

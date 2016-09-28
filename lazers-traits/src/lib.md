@@ -11,24 +11,28 @@ be it a CouchDB server itself or a local K/V store with a CouchDB interface.
   interaction_, not a negative query result (such as a database missing).
 
 * Responses with multiple semantic meanings are mapped to enums.
-* The library uses decorations of Result types and these enums for easier access.
+* The library uses decorations of Result types and these enums for easier
+access.
 
 ## Dependencies
 
 We use `serde`s definitions for serialisation/deserialisation.
 
-serde provides many features we want, including the ability to read documents
+serde provides many features we want, including the ability to read
+documents
 in a typesafe manner.
 
 ```rust
 extern crate serde;
 ```
 
-We use the error chain macro to provide the ability to wrap external errors in
+We use the error chain macro to provide the ability to wrap external errors
+in
 an easy fashion.
 
 ```rust
-#[macro_use] extern crate error_chain;
+#[macro_use]
+extern crate error_chain;
 ```
 
 ## Exports
@@ -37,7 +41,8 @@ The library exports two modules.
 
 `result` defines our own `Result` type. See the module page for details.
 
-`prelude` exports all definitions needed for day-to-day work, this allows users
+`prelude` exports all definitions needed for day-to-day work, this allows
+users
 to simply `use lazers_traits::prelude::*` instead of loading a huge block of
 codes imports themselves.
 
@@ -52,7 +57,8 @@ pub mod decorations;
 
 ## Use of externals
 
-Instead of `std::result::Result`, we use our own `Result` type. Take care when
+Instead of `std::result::Result`, we use our own `Result` type. Take care
+when
 reading the rest of this module.
 
 ```rust
@@ -90,27 +96,26 @@ CouchDB is all about handling documents, which means we have to find a
 definition for what constitutes a document. In our case, we decide that
 anything that can be serialised and deserialised by serde is a document.
 
-Also, we provide a blanket implementation that ensures that every type that is
+Also, we provide a blanket implementation that ensures that every type that
+is
 Deserialize and Serialize automatically implement Document.
 
 The Document trait is a marker trait and holds not methods.
 
-Documents, as a design choice, don't hold information about the database they
+Documents, as a design choice, don't hold information about the database
+they
 were loaded from.
 
 ```rust
-pub trait Document : Deserialize + Serialize {
+pub trait Document: Deserialize + Serialize {}
 
-}
-
-impl<D: Deserialize + Serialize + ?Sized> Document for D {
-
-}
+impl<D: Deserialize + Serialize + ?Sized> Document for D {}
 ```
 
 ### Key
 
-Keys are the main method of addressing Documents in CouchDB. As keys can take
+Keys are the main method of addressing Documents in CouchDB. As keys can
+take
 many forms and are regularly used to encode data, we only express the bare
 minimum as a trait.
 
@@ -122,7 +127,7 @@ for users to use, a simple struct with a `String` key and an optional `rev`
 `String`.
 
 ```rust
-pub trait Key : Eq + Clone + Debug {
+pub trait Key: Eq + Clone + Debug {
     fn id(&self) -> &str;
     fn rev(&self) -> Option<&str>;
     fn from_id_and_rev(id: String, rev: Option<String>) -> Self;
@@ -131,7 +136,7 @@ pub trait Key : Eq + Clone + Debug {
 #[derive(Debug,Clone,PartialEq,Eq)]
 pub struct SimpleKey {
     pub id: String,
-    pub rev: Option<String>
+    pub rev: Option<String>,
 }
 
 impl Key for SimpleKey {
@@ -142,7 +147,7 @@ impl Key for SimpleKey {
     fn rev(&self) -> Option<&str> {
         match self.rev {
             Some(ref string) => Some(string),
-            None => None
+            None => None,
         }
     }
 
@@ -153,14 +158,18 @@ impl Key for SimpleKey {
 
 impl From<String> for SimpleKey {
     fn from(string: String) -> SimpleKey {
-        SimpleKey { id: string, rev: None }
+        SimpleKey {
+            id: string,
+            rev: None,
+        }
     }
 }
 ```
 
-### The Client Trait 
+### The Client Trait
 
-The client trait is the entry point to all global storage level operations of
+The client trait is the entry point to all global storage level operations
+of
 CouchDB. Mostly, this is querying for named databases.
 
 Other operations are currently not supported.
@@ -168,8 +177,8 @@ Other operations are currently not supported.
 All operations return a result.
 
 ```rust
-pub trait Client : Default {
-    type Database : Database;
+pub trait Client: Default {
+    type Database: Database;
 
     fn find_database(&self, name: DatabaseName) -> Result<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>>;
 }
@@ -177,12 +186,14 @@ pub trait Client : Default {
 
 ### The DatabaseState Enum
 
-Querying for a database by name returns an enum describing two possible options:
+Querying for a database by name returns an enum describing two possible
+options:
 
 1. The database exists. A handle to the database can be retrieved from the
 `Existing` variant.
 
-2. The database is absent. In this case, the `Absent` variant holds the handle
+2. The database is absent. In this case, the `Absent` variant holds the
+handle
 to a `DatabaseCreator`. The Creator can then be used to create the database.
 
 For simple querying, `existing` and `absent` methods are implemented.
@@ -190,14 +201,14 @@ For simple querying, `existing` and `absent` methods are implemented.
 ```rust
 pub enum DatabaseState<D: Database, C: DatabaseCreator> {
     Existing(D),
-    Absent(C)
+    Absent(C),
 }
 
-impl<D: Database, C: DatabaseCreator> DatabaseState<D,C> {
+impl<D: Database, C: DatabaseCreator> DatabaseState<D, C> {
     pub fn absent(&self) -> bool {
         match self {
             &DatabaseState::Absent(_) => true,
-            _                         => false
+            _ => false,
         }
     }
 
@@ -209,14 +220,18 @@ impl<D: Database, C: DatabaseCreator> DatabaseState<D,C> {
 
 ## The DatabaseCreator
 
-A DatabaseCreator trait describes the creation of a database of a _known_ name.
+A DatabaseCreator trait describes the creation of a database of a _known_
+name.
 
 It does not provide a way to create a database by passing a name, as it is
-intended for use with the DatabaseState enum only. Implementors should pass the
+intended for use with the DatabaseState enum only. Implementors should pass
+the
 name of the database to be created to the underlying structure.
 
 ```rust
-pub trait DatabaseCreator where Self: Sized {
+pub trait DatabaseCreator
+    where Self: Sized
+{
     type D: Database;
 
     fn create(self) -> Result<Self::D>;
@@ -225,21 +240,26 @@ pub trait DatabaseCreator where Self: Sized {
 
 ### The `Database` trait
 
-The `Database` trait describes one `database` in CouchDB lingo. A database is a
+The `Database` trait describes one `database` in CouchDB lingo. A database
+is a
 seperate key-value bucket, holding documents and design documents.
 
 ### Lifecycle
 
-A struct implementing the `Database` trait also allows destroying the database,
+A struct implementing the `Database` trait also allows destroying the
+database,
 which also deletes all documents along with it.
 
-Destroying the database is a consuming operation, returning a `DatabaseCreator`
+Destroying the database is a consuming operation, returning a
+`DatabaseCreator`
 on success, to allow creating it again if wanted.
 
 ### Document access
 
-The methods for document access are all generic over the key and the document
-type(s) retrieved. Serialisation and Deserialisation failures are expressed as
+The methods for document access are all generic over the key and the
+document
+type(s) retrieved. Serialisation and Deserialisation failures are expressed
+as
 Errors.
 
 * `doc`: returns a handle on a database entry, described in "The
@@ -253,7 +273,9 @@ Errors.
   information results in an error.
 
 ```rust
-pub trait Database where Self: Sized {
+pub trait Database
+    where Self: Sized
+{
     type Creator: DatabaseCreator<D = Self>;
 
     fn destroy(self) -> Result<Self::Creator>;
@@ -272,36 +294,51 @@ queried by key, in a CouchDB database:
 * `Absent`: There is no document for this key
 * `Conflicted` : There are conflicts for this key
 
-As this information makes no sense without knowing the database the key belongs
-to, all variants of `DatabaseEntry` hold a reference to the `Database` handle
+As this information makes no sense without knowing the database the key
+belongs
+to, all variants of `DatabaseEntry` hold a reference to the `Database`
+handle
 they result from.
 
 For all three variants, convenience constructors are provided.
 
-An entry is considered "existing" if there's either a document for this key, or
+An entry is considered "existing" if there's either a document for this
+key, or
 a collision. An appropriate query method is provided.
 
 ```rust
 #[derive(Debug)]
 pub enum DatabaseEntry<'a, K: Key, D: Document, DB: Database + 'a> {
     Present { key: K, doc: D, database: &'a DB },
-    Absent  { key: K, database: &'a DB},
-    Conflicted { key: K, documents: Vec<D>, database: &'a DB },
+    Absent { key: K, database: &'a DB },
+    Conflicted {
+        key: K,
+        documents: Vec<D>,
+        database: &'a DB,
+    },
 }
 
 impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
     pub fn present(key: K, doc: D, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
-        DatabaseEntry::Present { key: key, doc: doc, database: database }
+        DatabaseEntry::Present {
+            key: key,
+            doc: doc,
+            database: database,
+        }
     }
 
     pub fn absent(key: K, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
-        DatabaseEntry::Absent { key: key, database: database}
+        DatabaseEntry::Absent {
+            key: key,
+            database: database,
+        }
     }
 
     pub fn exists(&self) -> bool {
         match self {
-            &DatabaseEntry::Present { .. } | &DatabaseEntry::Conflicted { .. } => true,
-            _ => false
+            &DatabaseEntry::Present { .. } |
+            &DatabaseEntry::Conflicted { .. } => true,
+            _ => false,
         }
     }
 }
@@ -309,5 +346,6 @@ impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
 
 ### Decorations
 
-Standard operations over the described types are implemented as decorations and
+Standard operations over the described types are implemented as decorations
+and
 can be found in the `decorations` module.

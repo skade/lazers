@@ -12,12 +12,12 @@ pub struct DocumentCreated {
 enum DocumentCreatedField {
     Ok,
     Id,
-    Rev
+    Rev,
 }
 
 impl Deserialize for DocumentCreated {
     fn deserialize<D>(deserializer: &mut D) -> Result<DocumentCreated, D::Error>
-        where D: serde::Deserializer,
+        where D: serde::Deserializer
     {
         deserializer.deserialize(DocumentCreatedVisitor)
     }
@@ -39,7 +39,12 @@ impl serde::Deserialize for DocumentCreatedField {
                     "ok" => Ok(DocumentCreatedField::Ok),
                     "id" => Ok(DocumentCreatedField::Id),
                     "rev" => Ok(DocumentCreatedField::Rev),
-                    _ => Err(serde::de::Error::unknown_field(format!("expected ok, id or rev field, got: {}", value).as_ref()))
+                    _ => {
+                        Err(serde::de::Error::unknown_field(format!("expected ok, id or rev \
+                                                                     field, got: {}",
+                                                                    value)
+                            .as_ref()))
+                    }
                 }
             }
         }
@@ -62,10 +67,18 @@ impl serde::de::Visitor for DocumentCreatedVisitor {
 
         loop {
             match try!(visitor.visit_key()) {
-                Some(DocumentCreatedField::Ok) => { ok = Some(try!(visitor.visit_value())); }
-                Some(DocumentCreatedField::Id) => { id = Some(try!(visitor.visit_value())); }
-                Some(DocumentCreatedField::Rev) => { rev = Some(try!(visitor.visit_value())); }
-                None => { break; }
+                Some(DocumentCreatedField::Ok) => {
+                    ok = Some(try!(visitor.visit_value()));
+                }
+                Some(DocumentCreatedField::Id) => {
+                    id = Some(try!(visitor.visit_value()));
+                }
+                Some(DocumentCreatedField::Rev) => {
+                    rev = Some(try!(visitor.visit_value()));
+                }
+                None => {
+                    break;
+                }
             }
         }
 
@@ -86,7 +99,11 @@ impl serde::de::Visitor for DocumentCreatedVisitor {
 
         try!(visitor.end());
 
-        Ok(DocumentCreated { ok: ok, id: id, rev: rev })
+        Ok(DocumentCreated {
+            ok: ok,
+            id: id,
+            rev: rev,
+        })
     }
 }
 
@@ -97,7 +114,9 @@ mod tests {
 
     #[test]
     fn parses_document_created() {
-        json::from_str::<DocumentCreated>("{\"ok\": true, \"id\": \"213123\", \"rev\": \"1-cd90201763f897aa0178b7ff05eb80cb\"}").unwrap();
+        json::from_str::<DocumentCreated>("{\"ok\": true, \"id\": \"213123\", \"rev\": \
+                                           \"1-cd90201763f897aa0178b7ff05eb80cb\"}")
+            .unwrap();
     }
 }
 ```

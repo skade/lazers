@@ -9,7 +9,7 @@ pub struct LastSeq {
 
 impl Deserialize for LastSeq {
     fn deserialize<D>(deserializer: &mut D) -> Result<LastSeq, D::Error>
-        where D: serde::Deserializer,
+        where D: serde::Deserializer
     {
         deserializer.deserialize(LastSeqVisitor)
     }
@@ -33,7 +33,12 @@ impl serde::Deserialize for LastSeqField {
             {
                 match value {
                     "last_seq" => Ok(LastSeqField::LastSeq),
-                    _ => Err(serde::de::Error::unknown_field(format!("expected last_seq field, got: {}", value).as_ref()))
+                    _ => {
+                        Err(serde::de::Error::unknown_field(format!("expected last_seq field, \
+                                                                     got: {}",
+                                                                    value)
+                            .as_ref()))
+                    }
                 }
             }
         }
@@ -54,8 +59,12 @@ impl serde::de::Visitor for LastSeqVisitor {
 
         loop {
             match try!(visitor.visit_key()) {
-                Some(LastSeqField::LastSeq) => { last_seq = Some(try!(visitor.visit_value())); }
-                None => { break; }
+                Some(LastSeqField::LastSeq) => {
+                    last_seq = Some(try!(visitor.visit_value()));
+                }
+                None => {
+                    break;
+                }
             }
         }
 

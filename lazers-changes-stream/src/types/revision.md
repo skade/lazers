@@ -9,7 +9,7 @@ pub struct Revision {
 
 impl Deserialize for Revision {
     fn deserialize<D>(deserializer: &mut D) -> Result<Revision, D::Error>
-        where D: serde::de::Deserializer,
+        where D: serde::de::Deserializer
     {
         deserializer.deserialize(RevisionVisitor)
     }
@@ -33,7 +33,7 @@ impl serde::Deserialize for RevisionField {
             {
                 match value {
                     "rev" => Ok(RevisionField::Rev),
-                    _ => Err(serde::de::Error::missing_field("expected rev field"))
+                    _ => Err(serde::de::Error::missing_field("expected rev field")),
                 }
             }
         }
@@ -54,8 +54,12 @@ impl serde::de::Visitor for RevisionVisitor {
 
         loop {
             match try!(visitor.visit_key()) {
-                Some(RevisionField::Rev) => { rev = Some(try!(visitor.visit_value())); }
-                None => { break; }
+                Some(RevisionField::Rev) => {
+                    rev = Some(try!(visitor.visit_value()));
+                }
+                None => {
+                    break;
+                }
             }
         }
 

@@ -1,5 +1,5 @@
 ```rust
 use serde::de::Deserialize;
 
-pub trait Document : Deserialize { }
+pub trait Document: Deserialize {}
 ```

@@ -18,7 +18,7 @@ pub struct CClient {
     inspect: unsafe extern "C" fn(*mut std::os::raw::c_void) -> (),
     close: unsafe extern "C" fn(*mut std::os::raw::c_void) -> (),
     get: unsafe extern "C" fn(*mut std::os::raw::c_void, *mut std::os::raw::c_char) -> (),
-    client: *mut std::os::raw::c_void
+    client: *mut std::os::raw::c_void,
 }
 
 pub trait CClientInterface {
@@ -32,7 +32,7 @@ impl<C: CClientInterface> From<Box<C>> for CClient {
             inspect: inspect::<C>,
             close: close::<C>,
             get: get::<C>,
-            client: Box::into_raw(i) as *mut std::os::raw::c_void
+            client: Box::into_raw(i) as *mut std::os::raw::c_void,
         }
     }
 }
@@ -47,13 +47,14 @@ impl CClientInterface for HyperClient {
 }
 
 unsafe extern "C" fn inspect<C: CClientInterface>(client: *mut std::os::raw::c_void) {
-    let client : Box<C> = Box::from_raw(client as *mut C);
+    let client: Box<C> = Box::from_raw(client as *mut C);
     client.inspect();
     std::mem::forget(client);
 }
 
-unsafe extern "C" fn get<C: CClientInterface>(client: *mut std::os::raw::c_void, raw_key: *mut std::os::raw::c_char) {
-    let client : Box<C> = Box::from_raw(client as *mut C);
+unsafe extern "C" fn get<C: CClientInterface>(client: *mut std::os::raw::c_void,
+                                              raw_key: *mut std::os::raw::c_char) {
+    let client: Box<C> = Box::from_raw(client as *mut C);
     let key = CStr::from_ptr(raw_key).to_str().unwrap();
     client.get(key);
     std::mem::forget(client);
