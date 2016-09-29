@@ -115,7 +115,7 @@ impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEn
         match entry {
             DatabaseEntry::Present { doc: d, .. } => Ok(d),
             DatabaseEntry::Absent { key, .. } => Err(key.id().to_string().into()),
-            _ => panic!("collisions are unimplemented"),
+            _ => panic!("conflicts are unimplemented"),
         }
     }
 

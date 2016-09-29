@@ -304,7 +304,7 @@ For all three variants, convenience constructors are provided.
 
 An entry is considered "existing" if there's either a document for this
 key, or
-a collision. An appropriate query method is provided.
+a conflicts. An appropriate query method is provided.
 
 ```rust
 #[derive(Debug)]
