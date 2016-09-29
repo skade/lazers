@@ -6,6 +6,8 @@ Uses literate programming through [https://github.com/pnkfelix/tango](tango) and
 
 [https://en.wiktionary.org/wiki/laze](It is pronouced "Laze RS").
 
+See [CONTRIBUTING](http://laze.rs/contributing.html) for a contribution guide.
+
 ## Project state
 
 This is currently mostly API experiments. I'm searching for help

@@ -24,3 +24,12 @@ system("pandoc",
        "-s",
        "-o",
        "doc/index.html")
+
+system("pandoc",
+       "CONTRIBUTING.md",
+       "--smart",
+       "--template",
+       "doc/_templates/page.template",
+       "-s",
+       "-o",
+       "doc/contributing.html")
