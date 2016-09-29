@@ -7,11 +7,12 @@
     <title>yakshav.es</title>
     <link rel="stylesheet" href="/css/site.css">
     <link rel="stylesheet" href="/css/hack.css">
-   <!-- <link rel="stylesheet" href="/css/highlight.css"> -->
+    <link rel="stylesheet" href="/css/highlight.css">
   </head>
   <body class="hack">
     <div class="container">
-      $body$
+
+$body$
 
       <a href="/">top<a/>
     </div>
