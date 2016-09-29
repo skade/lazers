@@ -23,6 +23,11 @@ use super::Document;
 use super::Key;
 
 use result::Result;
+use result::Error;
+
+use futures::BoxFuture;
+use futures::Future;
+use futures::finished;
 ```
 ### Results of finding a Database
 
@@ -51,25 +56,25 @@ pub trait FindDatabaseResult {
     fn and_delete(self) -> Self;
 }
 
-impl<D: Database> FindDatabaseResult for Result<DatabaseState<D, D::Creator>> {
+impl<D: Database + 'static> FindDatabaseResult for BoxFuture<DatabaseState<D, D::Creator>, Error> {
     type D = D;
 
     fn or_create(self) -> Self {
-        let state = try!(self);
-
-        match state {
-            DatabaseState::Existing(d) => Ok(DatabaseState::Existing(d)),
-            DatabaseState::Absent(creator) => creator.create().map(|d| DatabaseState::Existing(d)),
-        }
+        self.and_then({ |state|
+            match state {
+                DatabaseState::Existing(_) => finished(state).boxed(),
+                DatabaseState::Absent(creator) => creator.create().and_then(|d| finished(DatabaseState::Existing(d))).boxed(),
+            }
+        }).boxed()
     }
 
     fn and_delete(self) -> Self {
-        let state = try!(self);
-
-        match state {
-            DatabaseState::Absent(c) => Ok(DatabaseState::Absent(c)),
-            DatabaseState::Existing(d) => d.destroy().map(|c| DatabaseState::Absent(c)),
-        }
+        self.and_then({ |state|
+            match state {
+                DatabaseState::Absent(c) => finished(DatabaseState::Absent(c)).boxed(),
+                DatabaseState::Existing(d) => d.destroy().and_then(|c| finished(DatabaseState::Absent(c))).boxed(),
+            }
+        }).boxed()
     }
 }
 ```

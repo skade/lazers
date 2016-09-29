@@ -27,12 +27,17 @@ extern crate serde;
 ```
 
 We use the error chain macro to provide the ability to wrap external errors
-in
-an easy fashion.
+in an easy fashion.
 
 ```rust
 #[macro_use]
 extern crate error_chain;
+```
+
+To express asynchronicity, we use futures-rs.
+
+```rust
+extern crate futures;
 ```
 
 ## Exports
@@ -63,6 +68,13 @@ reading the rest of this module.
 
 ```rust
 use result::Result;
+use result::Error;
+```
+
+Futures, we use mainly through the BoxFuture interface. This carries with it the information that we expect all futures to be `Send`.
+
+```rust
+use futures::BoxFuture;
 ```
 
 We don't implement our own `Deserialize` and `Serialize` traits, but instead
@@ -180,7 +192,7 @@ All operations return a result.
 pub trait Client: Default {
     type Database: Database;
 
-    fn find_database(&self, name: DatabaseName) -> Result<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>>;
+    fn find_database(&self, name: DatabaseName) -> BoxFuture<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>, Error>;
 }
 ```
 
@@ -230,11 +242,11 @@ name of the database to be created to the underlying structure.
 
 ```rust
 pub trait DatabaseCreator
-    where Self: Sized
+    where Self: Sized + Send
 {
     type D: Database;
 
-    fn create(self) -> Result<Self::D>;
+    fn create(self) -> BoxFuture<Self::D, Error>;
 }
 ```
 
@@ -274,11 +286,11 @@ Errors.
 
 ```rust
 pub trait Database
-    where Self: Sized
+    where Self: Sized + Send
 {
     type Creator: DatabaseCreator<D = Self>;
 
-    fn destroy(self) -> Result<Self::Creator>;
+    fn destroy(self) -> BoxFuture<Self::Creator, Error>;
     fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, Self>>;
     fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)>;
     fn delete<K: Key>(&self, key: K) -> Result<()>;

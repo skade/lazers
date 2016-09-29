@@ -1,6 +1,9 @@
 extern crate lazers_hyper_client;
 extern crate lazers_traits;
 extern crate serde_json;
+extern crate futures;
+
+use futures::Future;
 
 use lazers_hyper_client::*;
 use lazers_traits::prelude::*;
@@ -8,14 +11,14 @@ use lazers_traits::prelude::*;
 #[test]
 fn test_database_lookup() {
     let client = HyperClient::default();
-    let res = client.find_database("absent".to_string());
+    let res = client.find_database("absent".to_string()).wait();
     assert!(res.is_ok());
 }
 
 #[test]
 fn test_database_absent() {
     let client = HyperClient::default();
-    let res = client.find_database("absent".to_string());
+    let res = client.find_database("absent".to_string()).wait();
     assert!(res.is_ok());
     assert!(res.unwrap().absent())
 }
@@ -24,7 +27,7 @@ fn test_database_absent() {
 fn test_database_create() {
     let client = HyperClient::default();
     let res = client.find_database("to_be_created".to_string())
-                    .or_create();
+                    .or_create().wait();
     assert!(res.is_ok());
     assert!(res.unwrap().existing())
 }
@@ -34,7 +37,7 @@ fn test_database_create_and_delete() {
     let client = HyperClient::default();
     let res = client.find_database("to_be_deleted".to_string())
                     .or_create()
-                    .and_delete();
+                    .and_delete().wait();
     assert!(res.is_ok());
     assert!(res.unwrap().absent())
 }
@@ -46,7 +49,7 @@ fn test_database_get_document() {
 
     let client = HyperClient::default();
     let res = client.find_database("empty_test_db".to_string())
-                    .or_create();
+                    .or_create().wait();
     assert!(res.is_ok());
     let db = res.unwrap();
     assert!(db.existing());
@@ -68,7 +71,7 @@ fn test_database_create_document() {
     let client = HyperClient::default();
     let res = client.find_database("empty_test_db".to_string())
                     .and_delete()
-                    .or_create();
+                    .or_create().wait();
     assert!(res.is_ok());
     let db = res.unwrap();
     assert!(db.existing());
@@ -91,7 +94,7 @@ fn test_database_create_document() {
         };
 
         assert!(set_res.is_ok());
-        
+
         let get_res = set_res.get();
         assert!(get_res.is_ok());
     } else {
