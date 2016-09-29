@@ -2,9 +2,9 @@
 
 What could become a CouchDB-client in Rust.
 
-Uses literate programming through [https://github.com/pnkfelix/tango](tango) and tries hard to build nice APIs.
+Uses literate programming through [tango](https://github.com/pnkfelix/tango) and tries hard to build nice APIs.
 
-[https://en.wiktionary.org/wiki/laze](It is pronouced "Laze RS").
+[It is pronouced "Laze RS"](https://en.wiktionary.org/wiki/laze).
 
 ## Project state
 
