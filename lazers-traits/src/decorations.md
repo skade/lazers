@@ -130,23 +130,20 @@ impl<K: Key + 'static, D: Document + 'static, DB: Database + 'static> DocumentRe
 
     fn set(self, doc: D) -> Self {
         self.and_then(|entry| {
-            let res = match entry {
+            match entry {
                 DatabaseEntry::Absent { key, database: db, .. } |
                 DatabaseEntry::Present { key, database: db, .. } => {
-                    match db.insert(key, doc) {
-                        Ok((key, doc)) => {
-                            Ok(DatabaseEntry::Present {
-                                key: key,
-                                doc: doc,
-                                database: db,
-                            })
-                        }
-                        Err(e) => Err(e),
-                    }
+                    db.insert(key, doc).and_then(|(key, doc)| {
+                        let new_entry = DatabaseEntry::Present {
+                            key: key,
+                            doc: doc,
+                            database: db,
+                        };
+                        finished(new_entry)
+                    })
                 }
                 DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
-            };
-            done(res).boxed()
+            }
         }).boxed()
     }
 
@@ -155,13 +152,15 @@ impl<K: Key + 'static, D: Document + 'static, DB: Database + 'static> DocumentRe
             match entry {
                 DatabaseEntry::Present { key, database: db, .. } => {
                     // ignoring here is fine, the OK value is ()
-                    let _ = try!{ db.delete(key.clone()) };
-                    Ok(DatabaseEntry::Absent {
-                        key: key,
-                        database: db,
-                    })
+                    db.delete(key.clone()).and_then( |_| {
+                        let new_entry = DatabaseEntry::Absent {
+                            key: key,
+                            database: db,
+                        };
+                        finished(new_entry)
+                    }).boxed()
                 }
-                a @ DatabaseEntry::Absent { .. } => Ok(a),
+                a @ DatabaseEntry::Absent { .. } => finished(a).boxed(),
                 DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
             }
         }).boxed()

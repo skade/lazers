@@ -163,7 +163,7 @@ impl Database for RemoteDatabase {
 
     // this should probably be &doc, as Doc won't be changed, but might
     // get a new key
-    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)> {
+    fn insert<K: Key + 'static, D: Document + 'static>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error> {
         println!("{:?}", key);
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
@@ -176,9 +176,9 @@ impl Database for RemoteDatabase {
         let body = match to_string(&doc) {
             Ok(s) => s,
             Err(e) => {
-                return Err(hyper_error(format!("Unexpected HTTP error"),
+                return failed(hyper_error(format!("Unexpected HTTP error"),
                                    e,
-                                   backtrace::Backtrace::new()))
+                                   backtrace::Backtrace::new())).boxed()
             }
         };
 
@@ -187,7 +187,8 @@ impl Database for RemoteDatabase {
             .header(ContentType(mime))
             .body(&body)
             .send();
-        match res {
+
+        let client_result = match res {
             Ok(r) => {
                 match r.status {
                     StatusCode::Created => {
@@ -221,10 +222,11 @@ impl Database for RemoteDatabase {
                             e,
                             backtrace::Backtrace::new()))
             }
-        }
+        };
+        done(client_result).boxed()
     }
 
-    fn delete<K: Key>(&self, key: K) -> Result<()> {
+    fn delete<K: Key>(&self, key: K) -> BoxFuture<(), Error> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
         url.query_pairs_mut().append_pair("rev", key.rev().unwrap());
@@ -232,7 +234,7 @@ impl Database for RemoteDatabase {
         let res = client.delete(url)
             .send();
 
-        match res {
+        let client_result = match res {
             Ok(r) => {
                 match r.status {
                     StatusCode::Ok => Ok(()),
@@ -247,7 +249,8 @@ impl Database for RemoteDatabase {
                             e,
                             backtrace::Backtrace::new()))
             }
-        }
+        };
+        done(client_result).boxed()
     }
 }
 

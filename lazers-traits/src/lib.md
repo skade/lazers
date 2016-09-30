@@ -298,8 +298,8 @@ pub trait Database
 
     fn destroy(self) -> BoxFuture<Self::Creator, Error>;
     fn doc<K: Key, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
-    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)>;
-    fn delete<K: Key>(&self, key: K) -> Result<()>;
+    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
+    fn delete<K: Key>(&self, key: K) -> BoxFuture<(), Error>;
 }
 ```
 
