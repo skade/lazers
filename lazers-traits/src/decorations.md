@@ -22,16 +22,14 @@ use super::DatabaseEntry;
 use super::Document;
 use super::Key;
 
-use result::Result;
 use result::Error;
 
 use futures::BoxFuture;
 use futures::Future;
 use futures::finished;
 use futures::done;
-
-use std::borrow::Borrow;
 ```
+
 ### Results of finding a Database
 
 `FindDatabaseResult` decorates the result returned from finding a database.

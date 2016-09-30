@@ -62,12 +62,9 @@ pub mod decorations;
 
 ## Use of externals
 
-Instead of `std::result::Result`, we use our own `Result` type. Take care
-when
-reading the rest of this module.
+We use a custom error created using error_chain!.
 
 ```rust
-use result::Result;
 use result::Error;
 ```
 
@@ -89,12 +86,6 @@ We have to provide custom `Debug` implementations, so we import the trait.
 
 ```rust
 use std::fmt::Debug;
-```
-
-Finally, we use `Borrow`, to be generic over borrows or ownerships.
-
-```rust
-use std::borrow::Borrow;
 ```
 
 ## Definitions
