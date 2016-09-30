@@ -68,11 +68,13 @@ impl Default for HyperClient {
     }
 }
 
+#[derive(Clone)]
 pub struct RemoteDatabaseCreator {
     name: DatabaseName,
     base_url: Url,
 }
 
+#[derive(Clone)]
 pub struct RemoteDatabase {
     name: DatabaseName,
     base_url: Url,
@@ -125,9 +127,9 @@ impl Database for RemoteDatabase {
         }
     }
 
-    fn doc<'a, K: Key, D: Document>(&'a self,
+    fn doc<K: Key + 'static, D: Document + 'static>(&self,
                                     key: K)
-                                    -> Result<DatabaseEntry<'a, K, D, RemoteDatabase>> {
+                                    -> BoxFuture<DatabaseEntry<K, D, RemoteDatabase>, Error> {
         let mut url = self.base_url.clone();
         url.set_path(format!("{}/{}", self.name, key.id()).as_ref());
         let client = hyper::client::Client::new();
@@ -142,19 +144,19 @@ impl Database for RemoteDatabase {
                         let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(),
                                                                        Some(rev.tag().to_owned()));
                         let doc = from_reader(r).unwrap();
-                        Ok(DatabaseEntry::present(key_with_rev, doc, self))
+                        finished(DatabaseEntry::present(key_with_rev, doc, self.clone())).boxed()
                     }
-                    StatusCode::NotFound => Ok(DatabaseEntry::absent(key, self)),
+                    StatusCode::NotFound => finished(DatabaseEntry::absent(key, self.clone())).boxed(),
                     _ => {
-                        Err(error(format!("Unexpected status: {}", r.status),
-                              backtrace::Backtrace::new()))
+                        failed(error(format!("Unexpected status: {}", r.status),
+                              backtrace::Backtrace::new())).boxed()
                     }
                 }
             }
             Err(e) => {
-                Err(hyper_error(format!("Unexpected HTTP error"),
+                failed(hyper_error(format!("Unexpected HTTP error"),
                             e,
-                            backtrace::Backtrace::new()))
+                            backtrace::Backtrace::new())).boxed()
             }
         }
     }

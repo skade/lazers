@@ -28,6 +28,9 @@ use result::Error;
 use futures::BoxFuture;
 use futures::Future;
 use futures::finished;
+use futures::done;
+
+use std::borrow::Borrow;
 ```
 ### Results of finding a Database
 
@@ -105,61 +108,63 @@ pub trait DocumentResult {
     type K: Key;
     type D: Document;
 
-    fn get(self) -> Result<Self::D>;
+    fn get(self) -> BoxFuture<Self::D, Error>;
     fn set(self, doc: Self::D) -> Self;
     fn delete(self) -> Self;
 }
 
-impl<'a, K: Key, D: Document, DB: Database> DocumentResult for Result<DatabaseEntry<'a, K, D, DB>> {
+impl<K: Key + 'static, D: Document + 'static, DB: Database + 'static> DocumentResult for BoxFuture<DatabaseEntry<K, D, DB>, Error> {
     type K = K;
     type D = D;
 
-    fn get(self) -> Result<Self::D> {
-        let entry = try!(self);
-
-        match entry {
-            DatabaseEntry::Present { doc: d, .. } => Ok(d),
-            DatabaseEntry::Absent { key, .. } => Err(key.id().to_string().into()),
-            _ => panic!("conflicts are unimplemented"),
-        }
+    fn get(self) -> BoxFuture<Self::D, Error> {
+        self.and_then(|entry| {
+            let res = match entry {
+                DatabaseEntry::Present { doc: d, .. } => Ok(d),
+                DatabaseEntry::Absent { key, .. } => Err(key.id().to_string().into()),
+                _ => panic!("conflicts are unimplemented"),
+            };
+            done(res).boxed()
+        }).boxed()
     }
 
     fn set(self, doc: D) -> Self {
-        let entry = try!(self);
-
-        match entry {
-            DatabaseEntry::Absent { key, database: db, .. } |
-            DatabaseEntry::Present { key, database: db, .. } => {
-                match db.insert(key, doc) {
-                    Ok((key, doc)) => {
-                        Ok(DatabaseEntry::Present {
-                            key: key,
-                            doc: doc,
-                            database: db,
-                        })
+        self.and_then(|entry| {
+            let res = match entry {
+                DatabaseEntry::Absent { key, database: db, .. } |
+                DatabaseEntry::Present { key, database: db, .. } => {
+                    match db.insert(key, doc) {
+                        Ok((key, doc)) => {
+                            Ok(DatabaseEntry::Present {
+                                key: key,
+                                doc: doc,
+                                database: db,
+                            })
+                        }
+                        Err(e) => Err(e),
                     }
-                    Err(e) => Err(e),
                 }
-            }
-            DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
-        }
+                DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
+            };
+            done(res).boxed()
+        }).boxed()
     }
 
     fn delete(self) -> Self {
-        let entry = try!(self);
-
-        match entry {
-            DatabaseEntry::Present { key, database: db, .. } => {
-                // ignoring here is fine, the OK value is ()
-                let _ = try!{ db.delete(key.clone()) };
-                Ok(DatabaseEntry::Absent {
-                    key: key,
-                    database: db,
-                })
+        self.and_then(|entry| {
+            match entry {
+                DatabaseEntry::Present { key, database: db, .. } => {
+                    // ignoring here is fine, the OK value is ()
+                    let _ = try!{ db.delete(key.clone()) };
+                    Ok(DatabaseEntry::Absent {
+                        key: key,
+                        database: db,
+                    })
+                }
+                a @ DatabaseEntry::Absent { .. } => Ok(a),
+                DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
             }
-            a @ DatabaseEntry::Absent { .. } => Ok(a),
-            DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
-        }
+        }).boxed()
     }
 }
 ```

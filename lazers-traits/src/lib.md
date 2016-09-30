@@ -91,6 +91,12 @@ We have to provide custom `Debug` implementations, so we import the trait.
 use std::fmt::Debug;
 ```
 
+Finally, we use `Borrow`, to be generic over borrows or ownerships.
+
+```rust
+use std::borrow::Borrow;
+```
+
 ## Definitions
 
 ### DatabaseName
@@ -109,19 +115,19 @@ definition for what constitutes a document. In our case, we decide that
 anything that can be serialised and deserialised by serde is a document.
 
 Also, we provide a blanket implementation that ensures that every type that
-is
-Deserialize and Serialize automatically implement Document.
+is Deserialize and Serialize.
 
 The Document trait is a marker trait and holds not methods.
 
 Documents, as a design choice, don't hold information about the database
-they
-were loaded from.
+they were loaded from.
+
+Finally, all Documents must be `Send`, as the represent plain data.
 
 ```rust
-pub trait Document: Deserialize + Serialize {}
+pub trait Document: Deserialize + Serialize + Send {}
 
-impl<D: Deserialize + Serialize + ?Sized> Document for D {}
+impl<D: Deserialize + Serialize + Send + ?Sized> Document for D {}
 ```
 
 ### Key
@@ -139,7 +145,7 @@ for users to use, a simple struct with a `String` key and an optional `rev`
 `String`.
 
 ```rust
-pub trait Key: Eq + Clone + Debug {
+pub trait Key: Eq + Clone + Debug + Send {
     fn id(&self) -> &str;
     fn rev(&self) -> Option<&str>;
     fn from_id_and_rev(id: String, rev: Option<String>) -> Self;
@@ -291,7 +297,7 @@ pub trait Database
     type Creator: DatabaseCreator<D = Self>;
 
     fn destroy(self) -> BoxFuture<Self::Creator, Error>;
-    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, Self>>;
+    fn doc<K: Key, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
     fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)>;
     fn delete<K: Key>(&self, key: K) -> Result<()>;
 }
@@ -320,18 +326,18 @@ a conflicts. An appropriate query method is provided.
 
 ```rust
 #[derive(Debug)]
-pub enum DatabaseEntry<'a, K: Key, D: Document, DB: Database + 'a> {
-    Present { key: K, doc: D, database: &'a DB },
-    Absent { key: K, database: &'a DB },
+pub enum DatabaseEntry<K: Key, D: Document, DB: Database> {
+    Present { key: K, doc: D, database: DB },
+    Absent { key: K, database: DB },
     Conflicted {
         key: K,
         documents: Vec<D>,
-        database: &'a DB,
+        database: DB,
     },
 }
 
-impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
-    pub fn present(key: K, doc: D, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
+impl<K: Key, D: Document, DB: Database> DatabaseEntry<K, D, DB> {
+    pub fn present(key: K, doc: D, database: DB) -> DatabaseEntry<K, D, DB> {
         DatabaseEntry::Present {
             key: key,
             doc: doc,
@@ -339,7 +345,7 @@ impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
         }
     }
 
-    pub fn absent(key: K, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
+    pub fn absent(key: K, database: DB) -> DatabaseEntry<K, D, DB> {
         DatabaseEntry::Absent {
             key: key,
             database: database,

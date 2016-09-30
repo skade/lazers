@@ -4,6 +4,7 @@ extern crate serde_json;
 extern crate futures;
 
 use futures::Future;
+use futures::done;
 
 use lazers_hyper_client::*;
 use lazers_traits::prelude::*;
@@ -57,7 +58,7 @@ fn test_database_get_document() {
     if let DatabaseState::Existing(db) = db {
         let key = SimpleKey::from("test".to_owned());
         let doc_res = db.doc::<SimpleKey, Value>(key);
-        assert!(doc_res.is_ok());
+        assert!(doc_res.wait().is_ok());
     } else {
         panic!("database not existing!")
     }
@@ -80,13 +81,13 @@ fn test_database_create_document() {
         let key = SimpleKey::from("test-will-be-created".to_owned());
         let s = "{\"x\": 1.0, \"y\": 2.0}";
         let value: Value = serde_json::from_str(s).unwrap();
-        let doc_res = db.doc(key);
+        let doc_res = db.doc(key).wait();
         assert!(doc_res.is_ok());
 
-        let del_res = doc_res.delete();
+        let del_res = done(doc_res).boxed().delete().wait();
         assert!(del_res.is_ok());
 
-        let set_res = del_res.set(value);
+        let set_res = done(del_res).boxed().set(value).wait();
 
         match set_res {
             Err(e) => {println!("{}", e); panic!()},
@@ -95,7 +96,7 @@ fn test_database_create_document() {
 
         assert!(set_res.is_ok());
 
-        let get_res = set_res.get();
+        let get_res = done(set_res).boxed().get().wait();
         assert!(get_res.is_ok());
     } else {
         panic!("database not existing!")
