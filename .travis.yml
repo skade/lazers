@@ -3,7 +3,7 @@ services: couchdb
 sudo: false
 rust:
   - 1.12.0
-  - nightly
+  #- nightly
 matrix:
   allow_failures:
     - rust: nightly
@@ -13,4 +13,4 @@ env:
 - PROJECT=lazers-changes-stream
 - PROJECT=lazers-replicator
 - PROJECT=lazers-liblazers
-script: cd $PROJECT; cargo test
+script: cd $PROJECT; cargo test --verbose
