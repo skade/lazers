@@ -13,8 +13,7 @@ use std::marker::PhantomData;
 ## Verify peers
 
 We implement the peer verification as described
-[here](http://docs.couchdb.org/en/1.6.1/replication/protocol.
-html#verify-peers).
+[here](http://docs.couchdb.org/en/1.6.1/replication/protocol.html#verify-peers).
 
 We follow a state-machine like pattern here and name all possible states
 first. We label all states by using zero sized structs. They only serve as
