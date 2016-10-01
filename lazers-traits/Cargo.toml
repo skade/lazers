@@ -8,6 +8,7 @@ build = "tango-build.rs"
 [dependencies]
 serde = "0.8.0"
 error-chain = "0.2.2"
+futures = "0.1.1"
 
 [build-dependencies]
 tango = "0.5.0"

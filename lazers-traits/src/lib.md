@@ -27,12 +27,17 @@ extern crate serde;
 ```
 
 We use the error chain macro to provide the ability to wrap external errors
-in
-an easy fashion.
+in an easy fashion.
 
 ```rust
 #[macro_use]
 extern crate error_chain;
+```
+
+To express asynchronicity, we use futures-rs.
+
+```rust
+extern crate futures;
 ```
 
 ## Exports
@@ -57,12 +62,16 @@ pub mod decorations;
 
 ## Use of externals
 
-Instead of `std::result::Result`, we use our own `Result` type. Take care
-when
-reading the rest of this module.
+We use a custom error created using error_chain!.
 
 ```rust
-use result::Result;
+use result::Error;
+```
+
+Futures, we use mainly through the BoxFuture interface. This carries with it the information that we expect all futures to be `Send`.
+
+```rust
+use futures::BoxFuture;
 ```
 
 We don't implement our own `Deserialize` and `Serialize` traits, but instead
@@ -97,19 +106,19 @@ definition for what constitutes a document. In our case, we decide that
 anything that can be serialised and deserialised by serde is a document.
 
 Also, we provide a blanket implementation that ensures that every type that
-is
-Deserialize and Serialize automatically implement Document.
+is Deserialize and Serialize.
 
 The Document trait is a marker trait and holds not methods.
 
 Documents, as a design choice, don't hold information about the database
-they
-were loaded from.
+they were loaded from.
+
+Finally, all Documents must be `Send`, as the represent plain data.
 
 ```rust
-pub trait Document: Deserialize + Serialize {}
+pub trait Document: Deserialize + Serialize + Send {}
 
-impl<D: Deserialize + Serialize + ?Sized> Document for D {}
+impl<D: Deserialize + Serialize + Send + ?Sized> Document for D {}
 ```
 
 ### Key
@@ -127,7 +136,7 @@ for users to use, a simple struct with a `String` key and an optional `rev`
 `String`.
 
 ```rust
-pub trait Key: Eq + Clone + Debug {
+pub trait Key: Eq + Clone + Debug + Send {
     fn id(&self) -> &str;
     fn rev(&self) -> Option<&str>;
     fn from_id_and_rev(id: String, rev: Option<String>) -> Self;
@@ -180,7 +189,7 @@ All operations return a result.
 pub trait Client: Default {
     type Database: Database;
 
-    fn find_database(&self, name: DatabaseName) -> Result<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>>;
+    fn find_database(&self, name: DatabaseName) -> BoxFuture<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>, Error>;
 }
 ```
 
@@ -230,11 +239,11 @@ name of the database to be created to the underlying structure.
 
 ```rust
 pub trait DatabaseCreator
-    where Self: Sized
+    where Self: Sized + Send
 {
     type D: Database;
 
-    fn create(self) -> Result<Self::D>;
+    fn create(self) -> BoxFuture<Self::D, Error>;
 }
 ```
 
@@ -274,14 +283,14 @@ Errors.
 
 ```rust
 pub trait Database
-    where Self: Sized
+    where Self: Sized + Send
 {
     type Creator: DatabaseCreator<D = Self>;
 
-    fn destroy(self) -> Result<Self::Creator>;
-    fn doc<'a, K: Key, D: Document>(&'a self, key: K) -> Result<DatabaseEntry<'a, K, D, Self>>;
-    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> Result<(K, D)>;
-    fn delete<K: Key>(&self, key: K) -> Result<()>;
+    fn destroy(self) -> BoxFuture<Self::Creator, Error>;
+    fn doc<K: Key, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
+    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
+    fn delete<K: Key>(&self, key: K) -> BoxFuture<(), Error>;
 }
 ```
 
@@ -308,18 +317,18 @@ a conflicts. An appropriate query method is provided.
 
 ```rust
 #[derive(Debug)]
-pub enum DatabaseEntry<'a, K: Key, D: Document, DB: Database + 'a> {
-    Present { key: K, doc: D, database: &'a DB },
-    Absent { key: K, database: &'a DB },
+pub enum DatabaseEntry<K: Key, D: Document, DB: Database> {
+    Present { key: K, doc: D, database: DB },
+    Absent { key: K, database: DB },
     Conflicted {
         key: K,
         documents: Vec<D>,
-        database: &'a DB,
+        database: DB,
     },
 }
 
-impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
-    pub fn present(key: K, doc: D, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
+impl<K: Key, D: Document, DB: Database> DatabaseEntry<K, D, DB> {
+    pub fn present(key: K, doc: D, database: DB) -> DatabaseEntry<K, D, DB> {
         DatabaseEntry::Present {
             key: key,
             doc: doc,
@@ -327,7 +336,7 @@ impl<'a, K: Key, D: Document, DB: Database> DatabaseEntry<'a, K, D, DB> {
         }
     }
 
-    pub fn absent(key: K, database: &'a DB) -> DatabaseEntry<'a, K, D, DB> {
+    pub fn absent(key: K, database: DB) -> DatabaseEntry<K, D, DB> {
         DatabaseEntry::Absent {
             key: key,
             database: database,
