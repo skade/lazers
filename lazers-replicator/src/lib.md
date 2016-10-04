@@ -6,8 +6,76 @@ an implementation of the algorithm described here:
 html#replication-protocol-algorithm).
 
 ```rust
-extern crate hyper;
+extern crate lazers_traits;
+extern crate futures;
+extern crate backtrace;
+
+use lazers_traits::prelude::*;
+
+use futures::Future;
+use futures::BoxFuture;
+use futures::failed;
+use futures::finished;
+
+use std::sync::Arc;
+
 use std::marker::PhantomData;
+```
+
+## Replicator
+
+The standard replicator struct is just a pair of clients to sync from and to, along with the databases to use.
+
+The two clients don't need to be of the same kind.
+
+```rust
+pub struct Replicator<From: Client + Send, To: Client + Send> {
+    from: From,
+    to: To,
+    from_db: DatabaseName,
+    to_db: DatabaseName,
+    create_target: bool
+}
+
+impl<From: Client + Send, To: Client + Send> Replicator<From, To> {
+    pub fn new(from: From, to: To, from_db: DatabaseName, to_db: DatabaseName, create_target: bool) -> Replicator<From, To> {
+        Replicator {
+            from: from,
+            to: to,
+            from_db: from_db,
+            to_db: to_db,
+            create_target: create_target
+        }
+    }
+}
+
+impl<From: Client + Send + 'static, To: Client + Send + 'static> Replicator<From, To> {
+    pub fn verify_peers(self) -> BoxFuture<(), Error> {
+        let verifier = VerifyPeers::new(self);
+        verifier.verify_source().and_then(|state| {
+            state.verify_target()
+        }).and_then(|state| {
+            state.fail_if_absent()
+        }).and_then(|state| {
+            finished(())
+        }).boxed()
+    }
+
+    pub fn setup_peers(self, create_target: bool) -> BoxFuture<(), Error> {
+        let verifier = VerifyPeers::new(self);
+        verifier.verify_source().and_then(|state| {
+            state.verify_target()
+        }).and_then(move |state| {
+            if create_target {
+                state.create_if_absent()
+            } else {
+                state.fail_if_absent()
+            }
+        }).and_then(|state| {
+            finished(())
+        }).boxed()
+    }
+}
 ```
 
 ## Verify peers
@@ -20,12 +88,20 @@ first. We label all states by using zero sized structs. They only serve as
 information for the type system.
 
 ```rust
+trait State {}
+
 struct Unconnected;
-struct CheckedSourceExistence;
-struct CheckTargetExistence;
-struct CheckCreateTarget;
-struct CreateTarget;
-struct GetSourceInformation;
+impl State for Unconnected {}
+
+struct SourceExisting;
+impl State for SourceExisting {}
+
+struct TargetExisting;
+impl State for TargetExisting {}
+
+struct TargetAbsent;
+impl State for TargetAbsent {}
+
 type VerifyError = String;
 struct Abort(VerifyError);
 ```
@@ -34,84 +110,88 @@ We then define a `VerifyPeers` struct to define the flow used in the first
 few steps. `VerifyPeers` also wraps an instance of a `CouchDB` client.
 
 ```rust
-trait Client: Default {
-    fn verify_existence<Url: hyper::client::IntoUrl>(&self, url: Url) -> Result<bool, String>;
+struct VerifyPeers<From: Client + Send, To: Client + Send, State> {
+    replicator: Replicator<From, To>,
+    state: State
 }
 
-struct HyperClient {
-    inner: hyper::client::Client,
-}
-
-impl Default for HyperClient {
-    fn default() -> HyperClient {
-        HyperClient { inner: hyper::client::Client::new() }
+impl<From: Client + Send, To: Client + Send, T> VerifyPeers<From, To, T> {
+    fn transition<X: State>(self, state: X) -> VerifyPeers<From, To, X> {
+        VerifyPeers { replicator: self.replicator, state: state }
     }
 }
 
-impl Client for HyperClient {
-    fn verify_existence<Url: hyper::client::IntoUrl>(&self, url: Url) -> Result<bool, String> {
-        self.inner
-            .head(url)
-            .send()
-            .map(|_| true)
-            .map_err(|e| e.to_string())
+impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, Unconnected> {
+    fn new(replicator: Replicator<From, To>) -> Self {
+        VerifyPeers { replicator: replicator, state: Unconnected }
+    }
+
+    fn verify_source(self) -> BoxFuture<VerifyPeers<From, To, SourceExisting>, Error> {
+        let database = self.replicator.from_db.clone();
+
+        let future_db_state = self.replicator.from.find_database(database);
+        future_db_state.and_then(|db_state| {
+            if db_state.existing() {
+                finished(self.transition(SourceExisting)).boxed()
+            } else {
+                failed(error("Source doesn't exist".into(), backtrace::Backtrace::new())).boxed()
+            }
+        }).boxed()
     }
 }
 
-trait Storage {
-    fn check_database(&self, name: &str) -> Result<bool, String>;
-}
+impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, SourceExisting> {
+    fn verify_target(self) -> BoxFuture<TargetBranch<From, To>, Error> {
+        let database = self.replicator.to_db.clone();
 
-impl<C: Client> Storage for RemoteCouchDB<C> {
-    fn check_database(&self, name: &str) -> Result<bool, String> {
-        self.client.verify_existence(&format!("{}/{}", self.base_url, name))
+        let future_db_state = self.replicator.to.find_database(database);
+        future_db_state.and_then(|db_state| {
+            if db_state.existing() {
+                finished(TargetBranch::Existing(self.transition(TargetExisting))).boxed()
+            } else {
+                finished(TargetBranch::Absent(self.transition(TargetAbsent))).boxed()
+            }
+        }).boxed()
     }
 }
 
-struct RemoteCouchDB<C: Client = HyperClient> {
-    client: C,
-    base_url: String,
-}
+impl<From: Client + Send + 'static, To: Client + Send + 'static> TargetBranch<From, To> {
+    fn create_if_absent(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
+        match self {
+            TargetBranch::Existing(s) => finished(s).boxed(),
+            TargetBranch::Absent(s) => {
+                s.create_target()
+            }
+        }
+    }
 
-impl<C: Client> RemoteCouchDB<C> {
-    fn new(base_url: String) -> RemoteCouchDB<C> {
-        RemoteCouchDB {
-            client: C::default(),
-            base_url: base_url,
+    fn fail_if_absent(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
+        match self {
+            TargetBranch::Existing(s) => finished(s).boxed(),
+            TargetBranch::Absent(_) => {
+                failed(error("Target doesn't exist".into(), backtrace::Backtrace::new())).boxed()
+            }
         }
     }
 }
 
-struct VerifyPeers<State> {
-    source: Box<Storage>,
-    marker: PhantomData<State>,
+impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, TargetAbsent> {
+    fn create_target(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
+        let database = self.replicator.to_db.clone();
+
+        let future_db_state = self.replicator.to.find_database(database);
+        future_db_state.or_create().and_then(|_| {
+            finished(self.transition(TargetExisting))
+        }).boxed()
+    }
 }
 
-impl VerifyPeers<Unconnected> {
-    fn check_source_existence
-        (self,
-         db_name: &str)
-         -> Result<VerifyPeers<CheckedSourceExistence>, VerifyPeers<Abort>> {
-        let source = match self {
-            VerifyPeers { source: s, marker: _ } => s,
-        };
-        let res = source.check_database(db_name);
+enum TargetBranch<From: Client + Send, To: Client + Send> {
+    Existing(VerifyPeers<From, To, TargetExisting>),
+    Absent(VerifyPeers<From, To, TargetAbsent>)
+}
 
-        match res {
-            Ok(present) if present == true => {
-                Ok(VerifyPeers {
-                    source: source,
-                    marker: PhantomData::<CheckedSourceExistence>,
-                })
-            }
-            _ => {
-                Err(VerifyPeers {
-                    source: source,
-                    marker: PhantomData::<Abort>,
-                })
-            }
-
-        }
-    }
+fn error(message: String, backtrace: backtrace::Backtrace) -> Error {
+    Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace)))
 }
 ```
