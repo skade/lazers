@@ -4,7 +4,6 @@ extern crate lazers_traits;
 extern crate futures;
 
 use futures::Future;
-use futures::done;
 
 use lazers_traits::prelude::*;
 use lazers_hyper_client::*;

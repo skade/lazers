@@ -332,7 +332,9 @@ pub trait Database
     where Self: Sized + Send
 {
     type Creator: DatabaseCreator<D = Self>;
+    //type DBInfo: DatabaseInfo;
 
+    //fn info(self) -> BoxFuture<Self::DBInfo, Error>;
     fn destroy(self) -> BoxFuture<Self::Creator, Error>;
     fn info(&self) -> BoxFuture<DatabaseInfo, Error>;
     fn doc<K: Key, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;

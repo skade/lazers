@@ -9,6 +9,8 @@ html#replication-protocol-algorithm).
 extern crate lazers_traits;
 extern crate futures;
 extern crate backtrace;
+#[macro_use]
+extern crate error_chain;
 
 use lazers_traits::prelude::*;
 
@@ -19,7 +21,9 @@ use futures::finished;
 
 use std::sync::Arc;
 
-use std::marker::PhantomData;
+use std::convert::From;
+
+pub mod errors;
 ```
 
 ## Replicator
@@ -51,14 +55,7 @@ impl<From: Client + Send, To: Client + Send> Replicator<From, To> {
 
 impl<From: Client + Send + 'static, To: Client + Send + 'static> Replicator<From, To> {
     pub fn verify_peers(self) -> BoxFuture<(), Error> {
-        let verifier = VerifyPeers::new(self);
-        verifier.verify_source().and_then(|state| {
-            state.verify_target()
-        }).and_then(|state| {
-            state.fail_if_absent()
-        }).and_then(|state| {
-            finished(())
-        }).boxed()
+        self.setup_peers(false)
     }
 
     pub fn setup_peers(self, create_target: bool) -> BoxFuture<(), Error> {
@@ -71,7 +68,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> Replicator<From
             } else {
                 state.fail_if_absent()
             }
-        }).and_then(|state| {
+        }).and_then(|_| {
             finished(())
         }).boxed()
     }
@@ -96,27 +93,51 @@ impl State for Unconnected {}
 struct SourceExisting;
 impl State for SourceExisting {}
 
-struct TargetExisting;
-impl State for TargetExisting {}
+impl From<Unconnected> for SourceExisting {
+    fn from(_: Unconnected) -> SourceExisting {
+        SourceExisting
+    }
+}
 
 struct TargetAbsent;
 impl State for TargetAbsent {}
 
+impl From<SourceExisting> for TargetAbsent {
+    fn from(_: SourceExisting) -> TargetAbsent {
+        TargetAbsent
+    }
+}
+
+struct TargetExisting;
+impl State for TargetExisting {}
+
+impl From<SourceExisting> for TargetExisting {
+    fn from(_: SourceExisting) -> TargetExisting {
+        TargetExisting
+    }
+}
+
+impl From<TargetAbsent> for TargetExisting {
+    fn from(_: TargetAbsent) -> TargetExisting {
+        TargetExisting
+    }
+}
+
 type VerifyError = String;
-struct Abort(VerifyError);
 ```
 
 We then define a `VerifyPeers` struct to define the flow used in the first
 few steps. `VerifyPeers` also wraps an instance of a `CouchDB` client.
 
 ```rust
-struct VerifyPeers<From: Client + Send, To: Client + Send, State> {
+struct VerifyPeers<From: Client + Send, To: Client + Send, S: State> {
     replicator: Replicator<From, To>,
-    state: State
+    #[allow(dead_code)]
+    state: S
 }
 
-impl<From: Client + Send, To: Client + Send, T> VerifyPeers<From, To, T> {
-    fn transition<X: State>(self, state: X) -> VerifyPeers<From, To, X> {
+impl<From: Client + Send, To: Client + Send, T: State> VerifyPeers<From, To, T> {
+    fn transition<X: State + std::convert::From<T>>(self, state: X) -> VerifyPeers<From, To, X> {
         VerifyPeers { replicator: self.replicator, state: state }
     }
 }
@@ -195,3 +216,5 @@ fn error(message: String, backtrace: backtrace::Backtrace) -> Error {
     Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace)))
 }
 ```
+
+## Get Peers information
