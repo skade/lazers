@@ -16,14 +16,10 @@ use lazers_traits::prelude::*;
 
 use futures::Future;
 use futures::BoxFuture;
-use futures::failed;
 use futures::finished;
 
-use std::sync::Arc;
-
-use std::convert::From as TransitionFrom;
-
 pub mod errors;
+mod verify_peers;
 ```
 
 ## Replicator
@@ -59,7 +55,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> Replicator<From
     }
 
     pub fn setup_peers(self, create_target: bool) -> BoxFuture<(), Error> {
-        let verifier = VerifyPeers::new(self);
+        let verifier = verify_peers::VerifyPeers::new(self);
         verifier.verify_source().and_then(|state| {
             state.verify_target()
         }).and_then(move |state| {
@@ -72,148 +68,6 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> Replicator<From
             finished(())
         }).boxed()
     }
-}
-```
-
-## Verify peers
-
-We implement the peer verification as described
-[here](http://docs.couchdb.org/en/1.6.1/replication/protocol.html#verify-peers).
-
-We follow a state-machine like pattern here and name all possible states
-first. We label all states by using zero sized structs. They only serve as
-information for the type system.
-
-Connections between states are implemented using the `From` trait, aliased as `TransitionFrom`.
-
-```rust
-trait State {}
-
-struct Unconnected;
-impl State for Unconnected {}
-
-struct SourceExisting;
-impl State for SourceExisting {}
-
-impl TransitionFrom<Unconnected> for SourceExisting {
-    fn from(_: Unconnected) -> SourceExisting {
-        SourceExisting
-    }
-}
-
-struct TargetAbsent;
-impl State for TargetAbsent {}
-
-impl TransitionFrom<SourceExisting> for TargetAbsent {
-    fn from(_: SourceExisting) -> TargetAbsent {
-        TargetAbsent
-    }
-}
-
-struct TargetExisting;
-impl State for TargetExisting {}
-
-impl TransitionFrom<SourceExisting> for TargetExisting {
-    fn from(_: SourceExisting) -> TargetExisting {
-        TargetExisting
-    }
-}
-
-impl TransitionFrom<TargetAbsent> for TargetExisting {
-    fn from(_: TargetAbsent) -> TargetExisting {
-        TargetExisting
-    }
-}
-```
-
-We then define a `VerifyPeers` struct to define the flow used in the first
-few steps. `VerifyPeers` also wraps an instance of a `CouchDB` client.
-
-```rust
-struct VerifyPeers<From: Client + Send, To: Client + Send, S: State> {
-    replicator: Replicator<From, To>,
-    #[allow(dead_code)]
-    state: S
-}
-
-impl<From: Client + Send, To: Client + Send, T: State> VerifyPeers<From, To, T> {
-    fn transition<X: State + TransitionFrom<T>>(self, state: X) -> VerifyPeers<From, To, X> {
-        VerifyPeers { replicator: self.replicator, state: state }
-    }
-}
-
-impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, Unconnected> {
-    fn new(replicator: Replicator<From, To>) -> Self {
-        VerifyPeers { replicator: replicator, state: Unconnected }
-    }
-
-    fn verify_source(self) -> BoxFuture<VerifyPeers<From, To, SourceExisting>, Error> {
-        let database = self.replicator.from_db.clone();
-
-        let future_db_state = self.replicator.from.find_database(database);
-        future_db_state.and_then(|db_state| {
-            if db_state.existing() {
-                finished(self.transition(SourceExisting)).boxed()
-            } else {
-                failed(error("Source doesn't exist".into(), backtrace::Backtrace::new())).boxed()
-            }
-        }).boxed()
-    }
-}
-
-impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, SourceExisting> {
-    fn verify_target(self) -> BoxFuture<TargetBranch<From, To>, Error> {
-        let database = self.replicator.to_db.clone();
-
-        let future_db_state = self.replicator.to.find_database(database);
-        future_db_state.and_then(|db_state| {
-            if db_state.existing() {
-                finished(TargetBranch::Existing(self.transition(TargetExisting))).boxed()
-            } else {
-                finished(TargetBranch::Absent(self.transition(TargetAbsent))).boxed()
-            }
-        }).boxed()
-    }
-}
-
-impl<From: Client + Send + 'static, To: Client + Send + 'static> TargetBranch<From, To> {
-    fn create_if_absent(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
-        match self {
-            TargetBranch::Existing(s) => finished(s).boxed(),
-            TargetBranch::Absent(s) => {
-                s.create_target()
-            }
-        }
-    }
-
-    fn fail_if_absent(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
-        match self {
-            TargetBranch::Existing(s) => finished(s).boxed(),
-            TargetBranch::Absent(_) => {
-                failed(error("Target doesn't exist".into(), backtrace::Backtrace::new())).boxed()
-            }
-        }
-    }
-}
-
-impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, TargetAbsent> {
-    fn create_target(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
-        let database = self.replicator.to_db.clone();
-
-        let future_db_state = self.replicator.to.find_database(database);
-        future_db_state.or_create().and_then(|_| {
-            finished(self.transition(TargetExisting))
-        }).boxed()
-    }
-}
-
-enum TargetBranch<From: Client + Send, To: Client + Send> {
-    Existing(VerifyPeers<From, To, TargetExisting>),
-    Absent(VerifyPeers<From, To, TargetAbsent>)
-}
-
-fn error(message: String, backtrace: backtrace::Backtrace) -> Error {
-    Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace)))
 }
 ```
 
