@@ -107,6 +107,45 @@ impl DatabaseCreator for RemoteDatabaseCreator {
 impl Database for RemoteDatabase {
     type Creator = RemoteDatabaseCreator;
 
+    fn info(&self) -> BoxFuture<DatabaseInfo, Error> {
+        let mut url = self.base_url.clone();
+        url.set_path(self.name.as_ref());
+        let client = hyper::client::Client::new();
+        let res = client.get(url)
+            .send();
+
+        let res2 = res.chain_err(|| self.name.clone());
+
+        match res2 {
+            Ok(r) => {
+                match r.status {
+                    StatusCode::Ok => {
+                        let info: types::database_info::CouchDBInfo = from_reader(r).unwrap();
+                        let db_info = DatabaseInfo::new(
+                            info.instance_start_time,
+                            UpdateSeq::Numeric(info.update_seq)
+                        );
+
+                        finished(db_info).boxed()
+                    }
+                    StatusCode::NotFound => {
+                        failed(error(format!("Database vanished: {}", self.name),
+                              backtrace::Backtrace::new())).boxed()
+                    }
+                    _ => {
+                        failed(error(format!("Unexpected status: {}", r.status),
+                              backtrace::Backtrace::new())).boxed()
+                    }
+                }
+            },
+            Err(e) => {
+                failed(hyper_error(format!("Unexpected HTTP error"),
+                            e,
+                            backtrace::Backtrace::new())).boxed()
+            }
+        }
+    }
+
     fn destroy(self) -> BoxFuture<RemoteDatabaseCreator, Error> {
         let mut url = self.base_url.clone();
         url.set_path(self.name.as_ref());

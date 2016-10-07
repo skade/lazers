@@ -9,6 +9,8 @@ pub use decorations::DocumentResult;
 pub use super::Document;
 pub use super::DatabaseEntry;
 pub use super::Key;
+pub use super::DatabaseInfo;
+pub use super::UpdateSeq;
 pub use super::result::Result;
 pub use super::result::Error;
 pub use super::result::ErrorKind;
