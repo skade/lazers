@@ -9,6 +9,7 @@ use futures::finished;
 
 use std::sync::Arc;
 use backtrace;
+use super::Unconnected as ReplicatorUnconnected;
 
 use std::convert::From as TransitionFrom;
 ```
@@ -69,7 +70,7 @@ few steps. `VerifyPeers` wraps the replicator struct for the duration of the pro
 
 ```rust
 pub struct VerifyPeers<From: Client + Send, To: Client + Send, S: State> {
-    replicator: Replicator<From, To>,
+    pub replicator: Replicator<From, To, ReplicatorUnconnected>,
     #[allow(dead_code)]
     state: S
 }
@@ -81,7 +82,7 @@ impl<From: Client + Send, To: Client + Send, T: State> VerifyPeers<From, To, T> 
 }
 
 impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, Unconnected> {
-    pub fn new(replicator: Replicator<From, To>) -> Self {
+    pub fn new(replicator: Replicator<From, To, ReplicatorUnconnected>) -> Self {
         VerifyPeers { replicator: replicator, state: Unconnected }
     }
 

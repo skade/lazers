@@ -41,7 +41,7 @@ fn test_present_databases() {
   let from_db = "present-source".to_string();
   let to_db = "present-target".to_string();
 
-  let replicator = Replicator::new(from, to, from_db, to_db, false);
+  let replicator = Replicator::new(from, to, from_db, to_db);
 
   let res = replicator.verify_peers().wait();
 
@@ -58,7 +58,7 @@ fn test_absent_from_database() {
   let from_db = "absent-source".to_string();
   let to_db = "absent-target".to_string();
 
-  let replicator = Replicator::new(from, to, from_db, to_db, false);
+  let replicator = Replicator::new(from, to, from_db, to_db);
 
   let res = replicator.verify_peers().wait();
 
@@ -75,7 +75,7 @@ fn test_absent_target_database_without_create() {
   let from_db = "present-source".to_string();
   let to_db = "absent-target".to_string();
 
-  let replicator = Replicator::new(from, to, from_db, to_db, false);
+  let replicator = Replicator::new(from, to, from_db, to_db);
 
   let res = replicator.verify_peers().wait();
 
@@ -92,11 +92,9 @@ fn test_absent_target_database_with_create() {
   let from_db = "present-source".to_string();
   let to_db = "absent-target".to_string();
 
-  let replicator = Replicator::new(from, to, from_db, to_db, true);
+  let replicator = Replicator::new(from, to, from_db, to_db);
 
   let res = replicator.setup_peers(true).wait();
-
-  println!("{:?}", res);
 
   assert!(res.is_ok())
 }
@@ -111,7 +109,7 @@ fn test_absent_source_database_with_create() {
   let from_db = "absent-source".to_string();
   let to_db = "absent-target".to_string();
 
-  let replicator = Replicator::new(from, to, from_db, to_db, true);
+  let replicator = Replicator::new(from, to, from_db, to_db);
 
   let res = replicator.setup_peers(true).wait();
 
