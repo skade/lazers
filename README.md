@@ -1,6 +1,6 @@
 # Laze RS
 
-What could become a CouchDB-client in Rust.
+What could become a CouchDB toolkit in Rust.
 
 Uses literate programming through [tango](https://github.com/pnkfelix/tango) and tries hard to build nice APIs.
 
