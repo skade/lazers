@@ -108,7 +108,7 @@ anything that can be serialised and deserialised by serde is a document.
 Also, we provide a blanket implementation that ensures that every type that
 is Deserialize and Serialize.
 
-The Document trait is a marker trait and holds not methods.
+The Document trait is a marker trait and holds no methods.
 
 Documents, as a design choice, don't hold information about the database
 they were loaded from.
