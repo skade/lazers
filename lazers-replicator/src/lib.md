@@ -21,7 +21,7 @@ use futures::finished;
 
 use std::sync::Arc;
 
-use std::convert::From;
+use std::convert::From as TransitionFrom;
 
 pub mod errors;
 ```
@@ -84,6 +84,8 @@ We follow a state-machine like pattern here and name all possible states
 first. We label all states by using zero sized structs. They only serve as
 information for the type system.
 
+Connections between states are implemented using the `From` trait, aliased as `TransitionFrom`.
+
 ```rust
 trait State {}
 
@@ -93,7 +95,7 @@ impl State for Unconnected {}
 struct SourceExisting;
 impl State for SourceExisting {}
 
-impl From<Unconnected> for SourceExisting {
+impl TransitionFrom<Unconnected> for SourceExisting {
     fn from(_: Unconnected) -> SourceExisting {
         SourceExisting
     }
@@ -102,7 +104,7 @@ impl From<Unconnected> for SourceExisting {
 struct TargetAbsent;
 impl State for TargetAbsent {}
 
-impl From<SourceExisting> for TargetAbsent {
+impl TransitionFrom<SourceExisting> for TargetAbsent {
     fn from(_: SourceExisting) -> TargetAbsent {
         TargetAbsent
     }
@@ -111,19 +113,17 @@ impl From<SourceExisting> for TargetAbsent {
 struct TargetExisting;
 impl State for TargetExisting {}
 
-impl From<SourceExisting> for TargetExisting {
+impl TransitionFrom<SourceExisting> for TargetExisting {
     fn from(_: SourceExisting) -> TargetExisting {
         TargetExisting
     }
 }
 
-impl From<TargetAbsent> for TargetExisting {
+impl TransitionFrom<TargetAbsent> for TargetExisting {
     fn from(_: TargetAbsent) -> TargetExisting {
         TargetExisting
     }
 }
-
-type VerifyError = String;
 ```
 
 We then define a `VerifyPeers` struct to define the flow used in the first
@@ -137,7 +137,7 @@ struct VerifyPeers<From: Client + Send, To: Client + Send, S: State> {
 }
 
 impl<From: Client + Send, To: Client + Send, T: State> VerifyPeers<From, To, T> {
-    fn transition<X: State + std::convert::From<T>>(self, state: X) -> VerifyPeers<From, To, X> {
+    fn transition<X: State + TransitionFrom<T>>(self, state: X) -> VerifyPeers<From, To, X> {
         VerifyPeers { replicator: self.replicator, state: state }
     }
 }
