@@ -85,9 +85,9 @@ impl<From: Client + Send, To: Client + Send, T: ReplicatorState> Replicator<From
 
 The replication process is implemented in state machines wrapping the steps outlined in the CouchDB documentation, each implemented in a seperate module:
 
-[`verify_peers`](/lazers-traits/src/verify_peers) implements peer verification.
+[`verify_peers`](/lazers-replicator/src/verify_peers) implements peer verification.
 
-[`get_peers_information`](/lazers-traits/src/get_peers_information) implements getting all important info from both peers.
+[`get_peers_information`](/lazers-replicator/src/get_peers_information) implements getting all important info from both peers.
 
 ```rust
 mod verify_peers;
