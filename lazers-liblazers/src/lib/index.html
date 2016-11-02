@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="liblazers">liblazers</h1>
+<p>The C interface to laze.rs.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">extern</span> crate lazers_hyper_client;
+<span class="kw">extern</span> crate lazers_traits;
+<span class="kw">extern</span> crate libc;
+
+<span class="kw">use</span> std::any::Any;
+<span class="kw">use</span> std::ffi::CStr;
+<span class="kw">use</span> lazers_traits::Client;
+<span class="kw">use</span> lazers_hyper_client::HyperClient;
+
+<span class="ot">#[</span>repr<span class="ot">(</span>C<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> CClient {
+    inspect: <span class="kw">unsafe</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span>(*<span class="kw">mut</span> std::os::raw::c_void) -&gt; (),
+    close: <span class="kw">unsafe</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span>(*<span class="kw">mut</span> std::os::raw::c_void) -&gt; (),
+    get: <span class="kw">unsafe</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span>(*<span class="kw">mut</span> std::os::raw::c_void, *<span class="kw">mut</span> std::os::raw::c_char) -&gt; (),
+    client: *<span class="kw">mut</span> std::os::raw::c_void,
+}
+
+<span class="kw">pub</span> <span class="kw">trait</span> CClientInterface {
+    <span class="kw">fn</span> inspect(&amp;<span class="kw">self</span>);
+    <span class="kw">fn</span> get(&amp;<span class="kw">self</span>, key: &amp;<span class="kw">str</span>);
+}
+
+<span class="kw">impl</span>&lt;C: CClientInterface&gt; From&lt;Box&lt;C&gt;&gt; <span class="kw">for</span> CClient {
+    <span class="kw">fn</span> from(i: Box&lt;C&gt;) -&gt; CClient {
+        CClient {
+            inspect: inspect::&lt;C&gt;,
+            close: close::&lt;C&gt;,
+            get: get::&lt;C&gt;,
+            client: Box::into_raw(i) <span class="kw">as</span> *<span class="kw">mut</span> std::os::raw::c_void,
+        }
+    }
+}
+
+<span class="kw">impl</span> CClientInterface <span class="kw">for</span> HyperClient {
+    <span class="kw">fn</span> inspect(&amp;<span class="kw">self</span>) {
+        <span class="ot">println!</span>(<span class="st">&quot;hey from hyperclient&quot;</span>);
+    }
+    <span class="kw">fn</span> get(&amp;<span class="kw">self</span>, key: &amp;<span class="kw">str</span>) {
+        <span class="ot">println!</span>(<span class="st">&quot;hey from get: {}&quot;</span>, key);
+    }
+}
+
+<span class="kw">unsafe</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span> inspect&lt;C: CClientInterface&gt;(client: *<span class="kw">mut</span> std::os::raw::c_void) {
+    <span class="kw">let</span> client: Box&lt;C&gt; = Box::from_raw(client <span class="kw">as</span> *<span class="kw">mut</span> C);
+    client.inspect();
+    std::mem::forget(client);
+}
+
+<span class="kw">unsafe</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span> get&lt;C: CClientInterface&gt;(client: *<span class="kw">mut</span> std::os::raw::c_void,
+                                              raw_key: *<span class="kw">mut</span> std::os::raw::c_char) {
+    <span class="kw">let</span> client: Box&lt;C&gt; = Box::from_raw(client <span class="kw">as</span> *<span class="kw">mut</span> C);
+    <span class="kw">let</span> key = CStr::from_ptr(raw_key).to_str().unwrap();
+    client.get(key);
+    std::mem::forget(client);
+}
+
+<span class="kw">unsafe</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span> close&lt;C: CClientInterface&gt;(client: *<span class="kw">mut</span> std::os::raw::c_void) {
+    <span class="kw">let</span> client = client <span class="kw">as</span> *<span class="kw">mut</span> CClient;
+    Box::from_raw((*client).client <span class="kw">as</span> *<span class="kw">mut</span> C);
+}
+
+<span class="ot">#[</span>no_mangle<span class="ot">]</span>
+<span class="kw">pub</span> <span class="kw">extern</span> <span class="st">&quot;C&quot;</span> <span class="kw">fn</span> lzrs_new_hyper_client() -&gt; *<span class="kw">mut</span> CClient {
+    <span class="kw">let</span> client = Box::new(HyperClient::default());
+    <span class="kw">let</span> client_structure = Box::new(client.into());
+    Box::into_raw(client_structure)
+}
+
+
+<span class="ot">#[</span>test<span class="ot">]</span>
+<span class="kw">fn</span> sizes() {
+    <span class="kw">use</span> std::mem::size_of;
+    <span class="ot">assert_eq!</span>(size_of::&lt;Box&lt;HyperClient&gt;&gt;(), <span class="dv">8</span>);
+    <span class="ot">assert_eq!</span>(size_of::&lt;Box&lt;Any&gt;&gt;(), <span class="dv">16</span>);
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

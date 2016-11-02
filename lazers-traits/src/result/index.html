@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="ot">error_chain!</span> {
+    <span class="co">// The type defined for this error. These are the conventional</span>
+    <span class="co">// and recommended names, but they can be arbitrarily chosen.</span>
+    types {
+        Error, ErrorKind, ChainErr, <span class="kw">Result</span>;
+    }
+
+    <span class="co">// Automatic conversions between this error chain and other</span>
+    <span class="co">// error chains. In this case, it will e.g. generate an</span>
+    <span class="co">// `ErrorKind` variant called `Dist` which in turn contains</span>
+    <span class="co">// the `rustup_dist::ErrorKind`, with conversions from</span>
+    <span class="co">// `rustup_dist::Error`.</span>
+    <span class="co">//</span>
+    <span class="co">// This section can be empty.</span>
+    links {
+    }
+
+    <span class="co">// Automatic conversions between this error chain and other</span>
+    <span class="co">// error types not defined by the `error_chain!`. These will be</span>
+    <span class="co">// boxed as the error cause and wrapped in a new error with,</span>
+    <span class="co">// in this case, the `ErrorKind::Temp` variant.</span>
+    <span class="co">//</span>
+    <span class="co">// This section can be empty.</span>
+    foreign_links {
+
+    }
+
+    <span class="co">// Define additional `ErrorKind` variants. The syntax here is</span>
+    <span class="co">// the same as `quick_error!`, but the `from()` and `cause()`</span>
+    <span class="co">// syntax is not supported.</span>
+    errors {
+        DocumentNotAvailable(key: String) {
+            description(<span class="st">&quot;Document requested was not available&quot;</span>)
+            display(<span class="st">&quot;requested key: &#39;{}&#39;&quot;</span>, key)
+        }
+        DatabaseCreationError(database: String) {
+            description(<span class="st">&quot;Could not create database&quot;</span>)
+            display(<span class="st">&quot;Error creating Database: &#39;{}&#39;&quot;</span>, database)
+        }
+        UpdateConflict(id: String) {
+            description(<span class="st">&quot;Document conflict&quot;</span>)
+            display(<span class="st">&quot;Document conflicht: &#39;{}&#39;&quot;</span>, id)
+        }
+        ClientError(desc: String) {
+            description(<span class="st">&quot;Client error&quot;</span>)
+            display(<span class="st">&quot;Client error: &#39;{}&#39;&quot;</span>, desc)
+        }
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

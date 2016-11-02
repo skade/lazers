@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> serde;
+<span class="kw">use</span> serde::de::Deserialize;
+<span class="kw">use</span> std::marker::PhantomData;
+<span class="kw">use</span> <span class="kw">super</span>::revision::Revision;
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Debug<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> Change&lt;T: Deserialize&gt; {
+    <span class="kw">pub</span> seq: <span class="kw">i64</span>,
+    id: String,
+    changes: Vec&lt;Revision&gt;,
+    doc: <span class="kw">Option</span>&lt;T&gt;,
+    deleted: <span class="kw">bool</span>,
+}
+
+<span class="kw">impl</span>&lt;T: Deserialize&gt; Deserialize <span class="kw">for</span> Change&lt;T&gt; {
+    <span class="kw">fn</span> deserialize&lt;D&gt;(deserializer: &amp;<span class="kw">mut</span> D) -&gt; <span class="kw">Result</span>&lt;Change&lt;T&gt;, D::Error&gt;
+        where D: serde::Deserializer
+    {
+        deserializer.deserialize(ChangeVisitor { phantom: PhantomData })
+    }
+}
+
+<span class="kw">enum</span> ChangeField {
+    Seq,
+    Id,
+    Changes,
+    Doc,
+    Deleted,
+}
+
+<span class="kw">impl</span> serde::Deserialize <span class="kw">for</span> ChangeField {
+    <span class="kw">fn</span> deserialize&lt;D&gt;(deserializer: &amp;<span class="kw">mut</span> D) -&gt; <span class="kw">Result</span>&lt;ChangeField, D::Error&gt;
+        where D: serde::de::Deserializer
+    {
+        <span class="kw">struct</span> ChangeFieldVisitor;
+
+        <span class="kw">impl</span> serde::de::Visitor <span class="kw">for</span> ChangeFieldVisitor {
+            <span class="kw">type</span> Value = ChangeField;
+
+            <span class="kw">fn</span> visit_str&lt;E&gt;(&amp;<span class="kw">mut</span> <span class="kw">self</span>, value: &amp;<span class="kw">str</span>) -&gt; <span class="kw">Result</span>&lt;ChangeField, E&gt;
+                where E: serde::de::Error
+            {
+                <span class="kw">match</span> value {
+                    <span class="st">&quot;seq&quot;</span> =&gt; <span class="kw">Ok</span>(ChangeField::Seq),
+                    <span class="st">&quot;id&quot;</span> =&gt; <span class="kw">Ok</span>(ChangeField::Id),
+                    <span class="st">&quot;changes&quot;</span> =&gt; <span class="kw">Ok</span>(ChangeField::Changes),
+                    <span class="st">&quot;doc&quot;</span> =&gt; <span class="kw">Ok</span>(ChangeField::Doc),
+                    <span class="st">&quot;deleted&quot;</span> =&gt; <span class="kw">Ok</span>(ChangeField::Deleted),
+                    _ =&gt; {
+                        <span class="kw">Err</span>(serde::de::Error::unknown_field(<span class="ot">format!</span>(<span class="st">&quot;expected seq, id, changes \</span>
+<span class="st">                                                                     or deleted field, got: {}&quot;</span>,
+                                                                    value)
+                            .as_ref()))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize(ChangeFieldVisitor)
+    }
+}
+
+<span class="kw">pub</span> <span class="kw">struct</span> ChangeVisitor&lt;T: Deserialize&gt; {
+    phantom: PhantomData&lt;T&gt;,
+}
+
+<span class="kw">impl</span>&lt;T: Deserialize&gt; serde::de::Visitor <span class="kw">for</span> ChangeVisitor&lt;T&gt; {
+    <span class="kw">type</span> Value = Change&lt;T&gt;;
+
+    <span class="kw">fn</span> visit_map&lt;V&gt;(&amp;<span class="kw">mut</span> <span class="kw">self</span>, <span class="kw">mut</span> visitor: V) -&gt; <span class="kw">Result</span>&lt;Change&lt;T&gt;, V::Error&gt;
+        where V: serde::de::MapVisitor
+    {
+        <span class="kw">let</span> <span class="kw">mut</span> seq = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> id = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> changes = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> doc = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> deleted = <span class="kw">None</span>;
+
+        <span class="kw">loop</span> {
+            <span class="kw">match</span> <span class="ot">try!</span>(visitor.visit_key()) {
+                <span class="kw">Some</span>(ChangeField::Seq) =&gt; {
+                    seq = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">Some</span>(ChangeField::Id) =&gt; {
+                    id = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">Some</span>(ChangeField::Changes) =&gt; {
+                    changes = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">Some</span>(ChangeField::Doc) =&gt; {
+                    doc = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">Some</span>(ChangeField::Deleted) =&gt; {
+                    deleted = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">None</span> =&gt; {
+                    <span class="kw">break</span>;
+                }
+            }
+        }
+
+        <span class="kw">let</span> seq = <span class="kw">match</span> seq {
+            <span class="kw">Some</span>(seq) =&gt; seq,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;seq&quot;</span>)),
+        };
+
+        <span class="kw">let</span> id = <span class="kw">match</span> id {
+            <span class="kw">Some</span>(id) =&gt; id,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;id&quot;</span>)),
+        };
+
+        <span class="kw">let</span> changes = <span class="kw">match</span> changes {
+            <span class="kw">Some</span>(changes) =&gt; changes,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;changes&quot;</span>)),
+        };
+
+        <span class="kw">let</span> doc = <span class="kw">match</span> doc {
+            <span class="kw">Some</span>(doc) =&gt; doc,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;doc&quot;</span>)),
+        };
+
+        <span class="kw">let</span> deleted = <span class="kw">match</span> deleted {
+            <span class="kw">Some</span>(deleted) =&gt; deleted,
+            <span class="kw">None</span> =&gt; <span class="kw">false</span>,
+        };
+
+        <span class="ot">try!</span>(visitor.end());
+
+        <span class="kw">Ok</span>(Change {
+            seq: seq,
+            id: id,
+            changes: changes,
+            doc: doc,
+            deleted: deleted,
+        })
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

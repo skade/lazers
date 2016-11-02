@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="lazers-changes-stream">lazers-changes-stream</h1>
+<p>lazers-changes-stream is an implementation of the streaming couchdb changes protocol. It is standalone, and independent of the stream kind. This means lazers-changes-stream doesn’t require HTTP interaction. lazers-changes-stream works with both in <code>include_docs=true</code> mode and without.</p>
+<p>lazers-changes-steam uses serde for serialization and deserialization of data. It is generic over the output data, so it deserializes into any user-requested data format, including simple JSON.</p>
+<h2 id="dependencies">Dependencies</h2>
+<p><code>serde</code> and <code>serde_json</code> are used for deserialisation.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">extern</span> crate serde;
+<span class="kw">extern</span> crate serde_json;</code></pre>
+<h2 id="exposed-modules">Exposed modules</h2>
+<h3 id="types"><code>types</code></h3>
+<p>This module defines all types used for reading the CouchDB changes protocol. Examples for this are the Change type that wraps a changed document and or the <code>LastSeq</code> type, which describes the last sequence number read.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">mod</span> types;</code></pre>
+<h3 id="changes_stream"><code>changes_stream</code></h3>
+<p>The general interface into the library, most notably the ChangesStream buffer implementation.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">mod</span> changes_stream;</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

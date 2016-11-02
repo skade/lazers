@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="lazers-hyper-client">lazers-hyper-client</h1>
+<p>A CouchDB client implemented using hyper.</p>
+<p>This is currently a draft implementation that suffers from a few problems, mainly that generating the errors hooking into lazers-traits a bit noisy.</p>
+<p>This crate itself holds no logic outside of HTTP handling, the description of all workflows is in lazers-traits.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">extern</span> crate hyper;
+<span class="kw">extern</span> crate url;
+<span class="kw">extern</span> crate lazers_traits;
+<span class="kw">extern</span> crate serde;
+<span class="kw">extern</span> crate serde_json;
+<span class="kw">extern</span> crate mime;
+<span class="kw">extern</span> crate backtrace;
+<span class="kw">extern</span> crate futures;
+
+<span class="kw">mod</span> types;
+<span class="kw">use</span> types::document_created::DocumentCreated;
+<span class="kw">use</span> types::error;
+
+<span class="kw">use</span> lazers_traits::prelude::*;
+
+<span class="kw">use</span> serde_json::de::from_reader;
+<span class="kw">use</span> serde_json::ser::to_string;
+
+<span class="kw">use</span> hyper::header::ETag;
+<span class="kw">use</span> hyper::header::ContentType;
+
+<span class="kw">use</span> hyper::client::IntoUrl;
+
+<span class="kw">use</span> hyper::status::StatusCode;
+<span class="kw">use</span> std::sync::Arc;
+
+<span class="kw">use</span> url::{Url, ParseError};
+
+<span class="kw">use</span> futures::BoxFuture;
+<span class="kw">use</span> futures::Future;
+<span class="kw">use</span> futures::finished;
+<span class="kw">use</span> futures::failed;
+<span class="kw">use</span> futures::done;
+
+<span class="kw">pub</span> <span class="kw">struct</span> HyperClient {
+    inner: hyper::client::Client,
+    base_url: Url,
+}
+
+<span class="kw">impl</span> HyperClient {
+    <span class="kw">pub</span> <span class="kw">fn</span> new&lt;T: IntoUrl&gt;(url: T) -&gt; std::result::<span class="kw">Result</span>&lt;HyperClient, ParseError&gt; {
+        <span class="kw">Ok</span>(HyperClient {
+            inner: hyper::client::Client::new(),
+            base_url: <span class="ot">try!</span>(url.into_url()),
+        })
+    }
+}
+
+<span class="kw">impl</span> Default <span class="kw">for</span> HyperClient {
+    <span class="kw">fn</span> default() -&gt; HyperClient {
+        HyperClient {
+            inner: hyper::client::Client::new(),
+            base_url: Url::parse(<span class="st">&quot;http://localhost:5984&quot;</span>).expect(<span class="st">&quot;this is a valid URL&quot;</span>),
+        }
+    }
+}
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Clone<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> RemoteDatabaseCreator {
+    name: DatabaseName,
+    base_url: Url,
+}
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Clone<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> RemoteDatabase {
+    name: DatabaseName,
+    base_url: Url,
+}
+
+<span class="kw">impl</span> DatabaseCreator <span class="kw">for</span> RemoteDatabaseCreator {
+    <span class="kw">type</span> D = RemoteDatabase;
+
+    <span class="kw">fn</span> create(<span class="kw">self</span>) -&gt; BoxFuture&lt;RemoteDatabase, Error&gt; {
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(<span class="kw">self</span>.name.as_ref());
+        <span class="kw">let</span> client = hyper::client::Client::new();
+        <span class="kw">let</span> res = client.put(url)
+            .send();
+
+        <span class="kw">let</span> res2 = res.chain_err(|| <span class="kw">self</span>.name.clone());
+
+        <span class="kw">match</span> res2 {
+            <span class="kw">Ok</span>(_) =&gt; {
+                finished(RemoteDatabase {
+                    name: <span class="kw">self</span>.name,
+                    base_url: <span class="kw">self</span>.base_url,
+                }).boxed()
+            }
+            <span class="kw">Err</span>(e) =&gt; failed(e).boxed(),
+        }
+    }
+}
+
+<span class="kw">impl</span> Database <span class="kw">for</span> RemoteDatabase {
+    <span class="kw">type</span> Creator = RemoteDatabaseCreator;
+
+    <span class="kw">fn</span> info(&amp;<span class="kw">self</span>) -&gt; BoxFuture&lt;DatabaseInfo, Error&gt; {
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(<span class="kw">self</span>.name.as_ref());
+        <span class="kw">let</span> client = hyper::client::Client::new();
+        <span class="kw">let</span> res = client.get(url)
+            .send();
+
+        <span class="kw">let</span> res2 = res.chain_err(|| <span class="kw">self</span>.name.clone());
+
+        <span class="kw">match</span> res2 {
+            <span class="kw">Ok</span>(r) =&gt; {
+                <span class="kw">match</span> r.status {
+                    StatusCode::<span class="kw">Ok</span> =&gt; {
+                        <span class="kw">let</span> info: types::database_info::CouchDBInfo = from_reader(r).unwrap();
+                        <span class="kw">let</span> db_info = DatabaseInfo::new(
+                            info.instance_start_time,
+                            UpdateSeq::Numeric(info.update_seq)
+                        );
+
+                        finished(db_info).boxed()
+                    }
+                    StatusCode::NotFound =&gt; {
+                        failed(error(<span class="ot">format!</span>(<span class="st">&quot;Database vanished: {}&quot;</span>, <span class="kw">self</span>.name),
+                              backtrace::Backtrace::new())).boxed()
+                    }
+                    _ =&gt; {
+                        failed(error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected status: {}&quot;</span>, r.status),
+                              backtrace::Backtrace::new())).boxed()
+                    }
+                }
+            },
+            <span class="kw">Err</span>(e) =&gt; {
+                failed(hyper_error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected HTTP error&quot;</span>),
+                            e,
+                            backtrace::Backtrace::new())).boxed()
+            }
+        }
+    }
+
+    <span class="kw">fn</span> destroy(<span class="kw">self</span>) -&gt; BoxFuture&lt;RemoteDatabaseCreator, Error&gt; {
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(<span class="kw">self</span>.name.as_ref());
+        <span class="kw">let</span> client = hyper::client::Client::new();
+        <span class="kw">let</span> res = client.delete(url)
+            .send();
+
+        <span class="kw">let</span> res2 = res.chain_err(|| <span class="kw">self</span>.name.clone());
+
+        <span class="kw">match</span> res2 {
+            <span class="kw">Ok</span>(_) =&gt; {
+                finished(RemoteDatabaseCreator {
+                    name: <span class="kw">self</span>.name,
+                    base_url: <span class="kw">self</span>.base_url,
+                }).boxed()
+            }
+            <span class="kw">Err</span>(e) =&gt; failed(e).boxed(),
+        }
+    }
+
+    <span class="kw">fn</span> doc&lt;K: Key + <span class="ot">&#39;static</span>, D: Document + <span class="ot">&#39;static</span>&gt;(&amp;<span class="kw">self</span>,
+                                    key: K)
+                                    -&gt; BoxFuture&lt;DatabaseEntry&lt;K, D, RemoteDatabase&gt;, Error&gt; {
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(<span class="ot">format!</span>(<span class="st">&quot;{}/{}&quot;</span>, <span class="kw">self</span>.name, key.id()).as_ref());
+        <span class="kw">let</span> client = hyper::client::Client::new();
+        <span class="kw">let</span> res = client.get(url)
+            .send();
+
+        <span class="kw">match</span> res {
+            <span class="kw">Ok</span>(r) =&gt; {
+                <span class="kw">match</span> r.status {
+                    StatusCode::<span class="kw">Ok</span> =&gt; {
+                        <span class="kw">let</span> rev = r.headers.get::&lt;ETag&gt;().unwrap().clone();
+                        <span class="kw">let</span> key_with_rev = &lt;K <span class="kw">as</span> Key&gt;::from_id_and_rev(key.id().to_owned(),
+                                                                       <span class="kw">Some</span>(rev.tag().to_owned()));
+                        <span class="kw">let</span> doc = from_reader(r).unwrap();
+                        finished(DatabaseEntry::present(key_with_rev, doc, <span class="kw">self</span>.clone())).boxed()
+                    }
+                    StatusCode::NotFound =&gt; finished(DatabaseEntry::absent(key, <span class="kw">self</span>.clone())).boxed(),
+                    _ =&gt; {
+                        failed(error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected status: {}&quot;</span>, r.status),
+                              backtrace::Backtrace::new())).boxed()
+                    }
+                }
+            }
+            <span class="kw">Err</span>(e) =&gt; {
+                failed(hyper_error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected HTTP error&quot;</span>),
+                            e,
+                            backtrace::Backtrace::new())).boxed()
+            }
+        }
+    }
+
+    <span class="co">// this should probably be &amp;doc, as Doc won&#39;t be changed, but might</span>
+    <span class="co">// get a new key</span>
+    <span class="kw">fn</span> insert&lt;K: Key + <span class="ot">&#39;static</span>, D: Document + <span class="ot">&#39;static</span>&gt;(&amp;<span class="kw">self</span>, key: K, doc: D) -&gt; BoxFuture&lt;(K, D), Error&gt; {
+        <span class="ot">println!</span>(<span class="st">&quot;{:?}&quot;</span>, key);
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(<span class="ot">format!</span>(<span class="st">&quot;{}/{}&quot;</span>, <span class="kw">self</span>.name, key.id()).as_ref());
+
+        <span class="kw">if</span> <span class="kw">let</span> <span class="kw">Some</span>(rev) = key.rev() {
+            url.query_pairs_mut().append_pair(<span class="st">&quot;rev&quot;</span>, rev);
+        }
+
+        <span class="kw">let</span> client = hyper::client::Client::new();
+        <span class="kw">let</span> body = <span class="kw">match</span> to_string(&amp;doc) {
+            <span class="kw">Ok</span>(s) =&gt; s,
+            <span class="kw">Err</span>(e) =&gt; {
+                <span class="kw">return</span> failed(hyper_error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected HTTP error&quot;</span>),
+                                   e,
+                                   backtrace::Backtrace::new())).boxed()
+            }
+        };
+
+        <span class="kw">let</span> mime: mime::Mime = <span class="st">&quot;application/json&quot;</span>.parse().unwrap();
+        <span class="kw">let</span> res = client.put(url)
+            .header(ContentType(mime))
+            .body(&amp;body)
+            .send();
+
+        <span class="kw">let</span> client_result = <span class="kw">match</span> res {
+            <span class="kw">Ok</span>(r) =&gt; {
+                <span class="kw">match</span> r.status {
+                    StatusCode::Created =&gt; {
+                        <span class="kw">let</span> response_data: DocumentCreated = from_reader(r).unwrap();
+
+                        <span class="kw">let</span> k = K::from_id_and_rev(response_data.id, <span class="kw">Some</span>(response_data.rev));
+
+                        <span class="kw">Ok</span>((k, doc))
+                    }
+                    StatusCode::Conflict =&gt; {
+                        <span class="kw">let</span> response_data: error::Error = from_reader(r).unwrap();
+                        <span class="kw">match</span> response_data {
+                            error::Error::Conflict(reason) =&gt; {
+                                conflict(<span class="ot">format!</span>(<span class="st">&quot;Document update conflict: {}&quot;</span>, reason),
+                                         backtrace::Backtrace::new())
+                            }
+                            error::Error::BadRequest(reason) =&gt; {
+                                <span class="kw">Err</span>(error(<span class="ot">format!</span>(<span class="st">&quot;Bad request: {}&quot;</span>, reason),
+                                      backtrace::Backtrace::new()))
+                            }
+                        }
+                    }
+                    _ =&gt; {
+                        <span class="kw">Err</span>(error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected status: {}&quot;</span>, r.status),
+                              backtrace::Backtrace::new()))
+                    }
+                }
+            }
+            <span class="kw">Err</span>(e) =&gt; {
+                <span class="kw">Err</span>(hyper_error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected HTTP error&quot;</span>),
+                            e,
+                            backtrace::Backtrace::new()))
+            }
+        };
+        done(client_result).boxed()
+    }
+
+    <span class="kw">fn</span> delete&lt;K: Key&gt;(&amp;<span class="kw">self</span>, key: K) -&gt; BoxFuture&lt;(), Error&gt; {
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(<span class="ot">format!</span>(<span class="st">&quot;{}/{}&quot;</span>, <span class="kw">self</span>.name, key.id()).as_ref());
+        url.query_pairs_mut().append_pair(<span class="st">&quot;rev&quot;</span>, key.rev().unwrap());
+        <span class="kw">let</span> client = hyper::client::Client::new();
+        <span class="kw">let</span> res = client.delete(url)
+            .send();
+
+        <span class="kw">let</span> client_result = <span class="kw">match</span> res {
+            <span class="kw">Ok</span>(r) =&gt; {
+                <span class="kw">match</span> r.status {
+                    StatusCode::<span class="kw">Ok</span> =&gt; <span class="kw">Ok</span>(()),
+                    _ =&gt; {
+                        <span class="kw">Err</span>(error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected status: {}&quot;</span>, r.status),
+                              backtrace::Backtrace::new()))
+                    }
+                }
+            }
+            <span class="kw">Err</span>(e) =&gt; {
+                <span class="kw">Err</span>(hyper_error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected HTTP error&quot;</span>),
+                            e,
+                            backtrace::Backtrace::new()))
+            }
+        };
+        done(client_result).boxed()
+    }
+}
+
+<span class="kw">impl</span> Client <span class="kw">for</span> HyperClient {
+    <span class="kw">type</span> Database = RemoteDatabase;
+
+    <span class="kw">fn</span> find_database(&amp;<span class="kw">self</span>,
+                     name: DatabaseName)
+                     -&gt; BoxFuture&lt;DatabaseState&lt;RemoteDatabase, RemoteDatabaseCreator&gt;, Error&gt; {
+        <span class="kw">let</span> <span class="kw">mut</span> url = <span class="kw">self</span>.base_url.clone();
+        url.set_path(name.as_ref());
+        <span class="kw">let</span> res = <span class="kw">self</span>.inner
+            .head(url)
+            .send();
+
+        <span class="kw">match</span> res {
+            <span class="kw">Ok</span>(r) =&gt; {
+                <span class="kw">match</span> r.status {
+                    StatusCode::<span class="kw">Ok</span> =&gt; {
+                        finished(DatabaseState::Existing(RemoteDatabase {
+                            name: name,
+                            base_url: <span class="kw">self</span>.base_url.clone(),
+                        })).boxed()
+                    }
+                    StatusCode::NotFound =&gt; {
+                        finished(DatabaseState::Absent(RemoteDatabaseCreator {
+                            name: name,
+                            base_url: <span class="kw">self</span>.base_url.clone(),
+                        })).boxed()
+                    }
+                    _ =&gt; {
+                        failed(error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected status: {}&quot;</span>, r.status),
+                                     backtrace::Backtrace::new())).boxed()
+                    }
+                }
+            }
+            <span class="kw">Err</span>(e) =&gt; {
+                failed(hyper_error(<span class="ot">format!</span>(<span class="st">&quot;Unexpected HTTP error&quot;</span>),
+                            e,
+                            backtrace::Backtrace::new())).boxed()
+            }
+        }
+    }
+}
+
+<span class="kw">fn</span> hyper_error&lt;E: std::error::Error + <span class="kw">Send</span> + <span class="ot">&#39;static</span>&gt;(message: String,
+                                                         error: E,
+                                                         backtrace: backtrace::Backtrace)
+                                                         -&gt; Error {
+    Error(ErrorKind::ClientError(message),
+              (<span class="kw">Some</span>(Box::new(error)), Arc::new(backtrace)))
+}
+
+<span class="kw">fn</span> error(message: String, backtrace: backtrace::Backtrace) -&gt; Error {
+    Error(ErrorKind::ClientError(message), (<span class="kw">None</span>, Arc::new(backtrace)))
+}
+
+<span class="kw">fn</span> conflict&lt;T&gt;(message: String, backtrace: backtrace::Backtrace) -&gt; <span class="kw">Result</span>&lt;T&gt; {
+    <span class="kw">Err</span>(Error(ErrorKind::ClientError(message), (<span class="kw">None</span>, Arc::new(backtrace))))
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

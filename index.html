@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="laze-rs">Laze RS</h1>
+<p>What could become a CouchDB toolkit in Rust.</p>
+<p>Uses literate programming through <a href="https://github.com/pnkfelix/tango">tango</a> and tries hard to build nice APIs.</p>
+<p><a href="https://en.wiktionary.org/wiki/laze">It is pronouced “Laze RS”</a>.</p>
+<p>See <a href="http://laze.rs/contributing.html">CONTRIBUTING</a> for a contribution guide.</p>
+<h2 id="project-state">Project state</h2>
+<p>This is currently mostly API experiments. I’m searching for help with many of them.</p>
+<p>Contributors welcome!</p>
+<p>Find a list of issues <a href="https://github.com/skade/lazers/issues">here</a>.</p>
+<h2 id="notable-specialties">Notable specialties</h2>
+<h3 id="use-of-tango">Use of Tango</h3>
+<p>Tango is used to provide richer documentation by using literate programming to make writing descriptions the default.</p>
+<h3 id="documentation-driven-development">Documentation-driven development</h3>
+<p>Features, as experimental as they may be, should never be committed without extensive documentation.</p>
+<p>This hasn’t been followed through in the past and has been fixed, but there might be spots. These spots shouldn’t happen again.</p>
+<h3 id="use-of-decorated-results">Use of decorated results</h3>
+<p>Decorated results allow a form of result chaining that hides error handling until the very last step.</p>
+<p>See <a href="http://yakshav.es/decorating-results/">yakshav.es/decorating-results/</a> about how decorated results work.</p>
+<h2 id="current-setup">Current Setup</h2>
+<p>The project currently consists of the following crates:</p>
+<ul>
+<li><p><a href="http://laze.rs/lazers-traits/src/lib/">lazers-traits</a>: A set of traits without implementations that describe the general interface towards a CouchDB(-like) database. It defines error and result types and interactions for writing and reading documents.</p></li>
+<li><p><a href="http://laze.rs/lazers-hyper-client/src/lib/">lazers-hyper-client</a>: A client implementing lazers-traits for a remote CouchDB using hyper. Currently also serves as an implementation example for the interface described in lazers-traits.</p></li>
+<li><p><a href="http://laze.rs/lazers-changes-stream/src/lib/">lazers-changes-stream</a>: An implementation of the CouchDB changes stream protocol. It is generic over any <code>Read</code> interface, so it depends on no http client.</p></li>
+<li><p><a href="http://laze.rs/lazers-replicator/src/lib/">lazers-replicator</a>: A (currently unfinished) implementation of the CouchDB replication protocol. Important features of the base libraries were missing, but it is still around as a placeholder or as a way to start.</p></li>
+<li><p><a href="http://laze.rs/lazers-liblazers/src/lib/">lazers-liblazers</a>: A C interface to the library. Still figuring a good way to do this. This interface is important, see [Long-Term Goals]</p></li>
+</ul>
+<h2 id="notably-missing">Notably missing</h2>
+<ul>
+<li>A second implementation of the lazers-traits interface for a local database</li>
+<li>A good way to compile the md source documents into a doc site</li>
+<li>A switch to tokio/futures-rs. I think this is the… future, so at some point the whole interface would need to be switched over.</li>
+</ul>
+<h2 id="long-term-goals">Long-term goals</h2>
+<ul>
+<li>Provide a way to use Laze RS on iOS and Android similar to CouchBase lite.</li>
+<li>Provide bindings towards several programming languages like Ruby/Python</li>
+</ul>
+<h2 id="constraints">Constraints</h2>
+<p>The library itself uses plain Serde for serialisation and deserialisation, this means some boilerplate work is required.</p>
+<h2 id="credits">Credits</h2>
+<p>Hat tip to https://lobste.rs/u/gsquire for the final name idea.</p>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

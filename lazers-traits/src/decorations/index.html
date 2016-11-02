@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="result-decorations">Result Decorations</h1>
+<p>These implementations make it easier to work with the results given by the traits described by the main module.</p>
+<p>They decorate the respective results with generic operations while propagating previously occuring errors.</p>
+<p>The pattern is described in detail <a href="http://yakshav.es/decorating-results">here</a>.</p>
+<h2 id="imports">Imports</h2>
+<p>All types to be decorated and types necessary for interaction with them.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> <span class="kw">super</span>::DatabaseState;
+<span class="kw">use</span> <span class="kw">super</span>::Database;
+<span class="kw">use</span> <span class="kw">super</span>::DatabaseCreator;
+<span class="kw">use</span> <span class="kw">super</span>::DatabaseEntry;
+<span class="kw">use</span> <span class="kw">super</span>::Document;
+<span class="kw">use</span> <span class="kw">super</span>::Key;
+
+<span class="kw">use</span> result::Error;
+
+<span class="kw">use</span> futures::BoxFuture;
+<span class="kw">use</span> futures::Future;
+<span class="kw">use</span> futures::finished;
+<span class="kw">use</span> futures::done;</code></pre>
+<h3 id="results-of-finding-a-database">Results of finding a Database</h3>
+<p><code>FindDatabaseResult</code> decorates the result returned from finding a database. The operations provided are <code>or_create</code> and <code>and_delete</code>.</p>
+<p><code>or_create</code> creates the database if it was not present, otherwise, it just returns the already-existing database. If and error occured in a previous step, the error is passed through and no attempt to create the database is undertaken.</p>
+<p><code>and_delete</code> delete the database if it is present, otherwise, it just returns the already absent state. If and error occured in a previous step, the error is passed through and no attempt to create the database is undertaken.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> FindDatabaseResult {
+    <span class="kw">type</span> D: Database;
+
+    fn or_create(self) -&gt; Self;
+    fn and_delete(self) -&gt; Self;
+}
+
+impl&lt;D: Database + <span class="ot">&#39;static</span>&gt; FindDatabaseResult <span class="kw">for</span> BoxFuture&lt;DatabaseState&lt;D, D::Creator&gt;, Error&gt; {
+    <span class="kw">type</span> D = D;
+
+    <span class="kw">fn</span> or_create(<span class="kw">self</span>) -&gt; <span class="kw">Self</span> {
+        <span class="kw">self</span>.and_then({ |state|
+            <span class="kw">match</span> state {
+                DatabaseState::Existing(_) =&gt; finished(state).boxed(),
+                DatabaseState::Absent(creator) =&gt; creator.create().and_then(|d| finished(DatabaseState::Existing(d))).boxed(),
+            }
+        }).boxed()
+    }
+
+    <span class="kw">fn</span> and_delete(<span class="kw">self</span>) -&gt; <span class="kw">Self</span> {
+        <span class="kw">self</span>.and_then({ |state|
+            <span class="kw">match</span> state {
+                DatabaseState::Absent(c) =&gt; finished(DatabaseState::Absent(c)).boxed(),
+                DatabaseState::Existing(d) =&gt; d.destroy().and_then(|c| finished(DatabaseState::Absent(c))).boxed(),
+            }
+        }).boxed()
+    }
+}</code></pre>
+<h3 id="results-of-retrieving-documents">Results of retrieving documents</h3>
+<p><code>DocumentResult</code> decorates the result returned from retrieving a document from. The operations provided are <code>get</code>, <code>set</code> and <code>delete</code>. If the result is already describing an error, that error is propagated.</p>
+<p><code>get</code> retrieves the document from the result and passes ownership to the caller. It consumes the result. Getting an absent document or a collided document is an error.</p>
+<p><code>set</code> changes the document stored under the given key. It consumes the result and returns another one instead, describing the new state of the document or possibly an error.</p>
+<p><code>delete</code> deletes the document stored under the given key. It consumes the result and returns another one instead, describing the new state of the document or possibly an error.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> DocumentResult {
+    <span class="kw">type</span> K: Key;
+    type D: Document;
+
+    fn get(self) -&gt; BoxFuture&lt;<span class="kw">Self</span>::D, Error&gt;;
+    <span class="kw">fn</span> set(<span class="kw">self</span>, doc: <span class="kw">Self</span>::D) -&gt; <span class="kw">Self</span>;
+    <span class="kw">fn</span> delete(<span class="kw">self</span>) -&gt; <span class="kw">Self</span>;
+}
+
+<span class="kw">impl</span>&lt;K: Key + <span class="ot">&#39;static</span>, D: Document + <span class="ot">&#39;static</span>, DB: Database + <span class="ot">&#39;static</span>&gt; DocumentResult <span class="kw">for</span> BoxFuture&lt;DatabaseEntry&lt;K, D, DB&gt;, Error&gt; {
+    <span class="kw">type</span> K = K;
+    <span class="kw">type</span> D = D;
+
+    <span class="kw">fn</span> get(<span class="kw">self</span>) -&gt; BoxFuture&lt;<span class="kw">Self</span>::D, Error&gt; {
+        <span class="kw">self</span>.and_then(|entry| {
+            <span class="kw">let</span> res = <span class="kw">match</span> entry {
+                DatabaseEntry::Present { doc: d, .. } =&gt; <span class="kw">Ok</span>(d),
+                DatabaseEntry::Absent { key, .. } =&gt; <span class="kw">Err</span>(key.id().to_string().into()),
+                _ =&gt; <span class="ot">panic!</span>(<span class="st">&quot;conflicts are unimplemented&quot;</span>),
+            };
+            done(res).boxed()
+        }).boxed()
+    }
+
+    <span class="kw">fn</span> set(<span class="kw">self</span>, doc: D) -&gt; <span class="kw">Self</span> {
+        <span class="kw">self</span>.and_then(|entry| {
+            <span class="kw">match</span> entry {
+                DatabaseEntry::Absent { key, database: db, .. } |
+                DatabaseEntry::Present { key, database: db, .. } =&gt; {
+                    db.insert(key, doc).and_then(|(key, doc)| {
+                        <span class="kw">let</span> new_entry = DatabaseEntry::Present {
+                            key: key,
+                            doc: doc,
+                            database: db,
+                        };
+                        finished(new_entry)
+                    })
+                }
+                DatabaseEntry::Conflicted { .. } =&gt; <span class="ot">panic!</span>(<span class="st">&quot;unimplemented&quot;</span>),
+            }
+        }).boxed()
+    }
+
+    <span class="kw">fn</span> delete(<span class="kw">self</span>) -&gt; <span class="kw">Self</span> {
+        <span class="kw">self</span>.and_then(|entry| {
+            <span class="kw">match</span> entry {
+                DatabaseEntry::Present { key, database: db, .. } =&gt; {
+                    <span class="co">// ignoring here is fine, the OK value is ()</span>
+                    db.delete(key.clone()).and_then( |_| {
+                        <span class="kw">let</span> new_entry = DatabaseEntry::Absent {
+                            key: key,
+                            database: db,
+                        };
+                        finished(new_entry)
+                    }).boxed()
+                }
+                a @ DatabaseEntry::Absent { .. } =&gt; finished(a).boxed(),
+                DatabaseEntry::Conflicted { .. } =&gt; <span class="ot">panic!</span>(<span class="st">&quot;unimplemented&quot;</span>),
+            }
+        }).boxed()
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

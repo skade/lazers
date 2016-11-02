@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="lazers-replicator">lazers-replicator</h1>
+<p>A replicator that takes a lazers DB and syncs couchdb data into it. It is an implementation of the algorithm described here: <a href="http://docs.couchdb.org/en/1.6.1/replication/protocol.%20html#replication-protocol-algorithm">here</a>.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">extern</span> crate lazers_traits;
+<span class="kw">extern</span> crate futures;
+<span class="kw">extern</span> crate backtrace;
+<span class="ot">#[</span>macro_use<span class="ot">]</span>
+<span class="kw">extern</span> crate error_chain;
+
+<span class="kw">use</span> lazers_traits::prelude::*;
+
+<span class="kw">use</span> futures::Future;
+<span class="kw">use</span> futures::BoxFuture;
+<span class="kw">use</span> futures::finished;
+
+<span class="kw">use</span> std::convert::From <span class="kw">as</span> TransitionFrom;
+
+<span class="kw">pub</span> <span class="kw">mod</span> errors;</code></pre>
+<h2 id="replicator">Replicator</h2>
+<p>The standard replicator struct is just a pair of clients to sync from and to, along with the databases to use.</p>
+<p>The two clients don’t need to be of the same kind.</p>
+<p>The Replicator itself has a high-level state machine.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">struct</span> Replicator&lt;From: Client + <span class="kw">Send</span>, To: Client + <span class="kw">Send</span>, State: ReplicatorState&gt; {
+    from: From,
+    to: To,
+    from_db: DatabaseName,
+    to_db: DatabaseName,
+    <span class="ot">#[</span>allow<span class="ot">(</span>dead_code<span class="ot">)]</span>
+    state: State
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span>, To: Client + <span class="kw">Send</span>&gt; Replicator&lt;From, To, Unconnected&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> new(from: From, to: To, from_db: DatabaseName, to_db: DatabaseName) -&gt; Replicator&lt;From, To, Unconnected&gt; {
+        Replicator {
+            from: from,
+            to: to,
+            from_db: from_db,
+            to_db: to_db,
+            state: Unconnected
+        }
+    }
+}</code></pre>
+<h3 id="the-state-machine">The state machine</h3>
+<p>The Replicator state machine encodes all high-level steps descriped in the <a href="http://docs.couchdb.org/en/2.0.0/replication/protocol.html">CouchDB replication protocol</a>.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> ReplicatorState {}
+
+<span class="kw">pub</span> <span class="kw">struct</span> Unconnected;
+<span class="kw">impl</span> ReplicatorState <span class="kw">for</span> Unconnected {}
+
+<span class="kw">pub</span> <span class="kw">struct</span> PeersVerified;
+<span class="kw">impl</span> ReplicatorState <span class="kw">for</span> PeersVerified {}
+
+<span class="kw">impl</span> TransitionFrom&lt;Unconnected&gt; <span class="kw">for</span> PeersVerified {
+    <span class="kw">fn</span> from(_: Unconnected) -&gt; PeersVerified {
+        PeersVerified
+    }
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span>, To: Client + <span class="kw">Send</span>, T: ReplicatorState&gt; Replicator&lt;From, To, T&gt; {
+    <span class="kw">fn</span> transition&lt;X: ReplicatorState + TransitionFrom&lt;T&gt;&gt;(<span class="kw">self</span>, state: X) -&gt; Replicator&lt;From, To, X&gt; {
+        Replicator { state: state, from: <span class="kw">self</span>.from, to: <span class="kw">self</span>.to, from_db: <span class="kw">self</span>.from_db, to_db: <span class="kw">self</span>.to_db }
+    }
+}</code></pre>
+<h2 id="the-replication-process">The replication process</h2>
+<p>The replication process is implemented in state machines wrapping the steps outlined in the CouchDB documentation, each implemented in a seperate module:</p>
+<p><a href="/lazers-replicator/src/verify_peers"><code>verify_peers</code></a> implements peer verification.</p>
+<p><a href="/lazers-replicator/src/get_peers_information"><code>get_peers_information</code></a> implements getting all important info from both peers.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">mod</span> verify_peers;
+<span class="co">//mod get_peers_information;</span></code></pre>
+<p>All these steps wrap the replicator type.</p>
+<p>Finally, they are glued to the replicator as its public interface.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>, To: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>&gt; Replicator&lt;From, To, Unconnected&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> verify_peers(<span class="kw">self</span>) -&gt; BoxFuture&lt;Replicator&lt;From, To, PeersVerified&gt;, Error&gt; {
+        <span class="kw">self</span>.setup_peers(<span class="kw">false</span>)
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> setup_peers(<span class="kw">self</span>, create_target: <span class="kw">bool</span>) -&gt; BoxFuture&lt;Replicator&lt;From, To, PeersVerified&gt;, Error&gt; {
+        <span class="kw">let</span> verifier = verify_peers::VerifyPeers::new(<span class="kw">self</span>);
+        verifier.verify_source().and_then(|state| {
+            state.verify_target()
+        }).and_then(move |state| {
+            <span class="kw">if</span> create_target {
+                state.create_if_absent()
+            } <span class="kw">else</span> {
+                state.fail_if_absent()
+            }
+        }).and_then(|verifier| {
+            finished(verifier.replicator.transition(PeersVerified))
+        }).boxed()
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

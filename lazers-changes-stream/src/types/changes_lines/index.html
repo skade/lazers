@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> serde_json <span class="kw">as</span> json;
+<span class="kw">use</span> serde::de::Deserialize;
+<span class="kw">use</span> std::convert::AsRef;
+<span class="kw">use</span> <span class="kw">super</span>::change::Change;
+<span class="kw">use</span> <span class="kw">super</span>::last_seq::LastSeq;
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Debug<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> ChangesLines&lt;T: Deserialize&gt; {
+    Change(Change&lt;T&gt;),
+    LastSeq(LastSeq),
+}
+
+<span class="kw">impl</span>&lt;T: Deserialize&gt; ChangesLines&lt;T&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> parse&lt;<span class="ot">&#39;a</span>, Line: AsRef&lt;<span class="kw">str</span>&gt;&gt;(line: Line) -&gt; <span class="kw">Result</span>&lt;ChangesLines&lt;T&gt;, json::error::Error&gt; {
+        json::from_str::&lt;Change&lt;T&gt;&gt;(line.as_ref())
+            .map(|c| ChangesLines::Change(c))
+            .or_else(|e| {
+                json::from_str::&lt;LastSeq&gt;(line.as_ref())
+                    .map(|seq| ChangesLines::LastSeq(seq))
+                    .or(<span class="kw">Err</span>(e))
+            })
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> change(&amp;<span class="kw">self</span>) -&gt; <span class="kw">bool</span> {
+        <span class="kw">match</span> *<span class="kw">self</span> {
+            ChangesLines::Change(_) =&gt; <span class="kw">true</span>,
+            _ =&gt; <span class="kw">false</span>,
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> to_change(<span class="kw">self</span>) -&gt; <span class="kw">Option</span>&lt;Change&lt;T&gt;&gt; {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            ChangesLines::Change(c) =&gt; <span class="kw">Some</span>(c),
+            _ =&gt; <span class="kw">None</span>,
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> to_last_seq(<span class="kw">self</span>) -&gt; <span class="kw">Option</span>&lt;LastSeq&gt; {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            ChangesLines::LastSeq(l) =&gt; <span class="kw">Some</span>(l),
+            _ =&gt; <span class="kw">None</span>,
+        }
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="lazers-traits---laze-rs-interface">lazers-traits - laze RS interface</h1>
+<h2 id="general-philosophy">General philosophy</h2>
+<p>This library models the general interactions with CouchDB-like storages, be it a CouchDB server itself or a local K/V store with a CouchDB interface.</p>
+<h3 id="techniques">Techniques</h3>
+<ul>
+<li><p>All operations return Results. An Error value describes a <em>failed interaction</em>, not a negative query result (such as a database missing).</p></li>
+<li>Responses with multiple semantic meanings are mapped to enums.</li>
+<li><p>The library uses decorations of Result types and these enums for easier access.</p></li>
+</ul>
+<h2 id="dependencies">Dependencies</h2>
+<p>We use <code>serde</code>s definitions for serialisation/deserialisation.</p>
+<p>serde provides many features we want, including the ability to read documents in a typesafe manner.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">extern</span> crate serde;</code></pre>
+<p>We use the error chain macro to provide the ability to wrap external errors in an easy fashion.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="ot">#[</span>macro_use<span class="ot">]</span>
+<span class="kw">extern</span> crate error_chain;</code></pre>
+<p>To express asynchronicity, we use futures-rs.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">extern</span> crate futures;</code></pre>
+<h2 id="exports">Exports</h2>
+<p>The library exports two modules.</p>
+<p><a href="/lazers-traits/src/result"><code>result</code></a> defines our own <code>Result</code> type. See the module page for details.</p>
+<p><a href="/lazers-traits/src/prelude"><code>prelude</code></a> exports all definitions needed for day-to-day work, this allows users to simply <code>use lazers_traits::prelude::*</code> instead of loading a huge block of codes imports themselves.</p>
+<p><a href="/lazers-traits/src/decorations"><code>decorations</code></a> collects all convenience decorations of the library on, for example, <code>Result</code> types.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">mod</span> result;
+<span class="kw">pub</span> <span class="kw">mod</span> prelude;
+<span class="kw">pub</span> <span class="kw">mod</span> decorations;</code></pre>
+<h2 id="use-of-externals">Use of externals</h2>
+<p>We use a custom error created using error_chain!.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> result::Error;</code></pre>
+<p>Futures, we use mainly through the BoxFuture interface. This carries with it the information that we expect all futures to be <code>Send</code>.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> futures::BoxFuture;</code></pre>
+<p>We don’t implement our own <code>Deserialize</code> and <code>Serialize</code> traits, but instead use the ones from serde.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> serde::de::Deserialize;
+<span class="kw">use</span> serde::ser::Serialize;</code></pre>
+<p>We have to provide custom <code>Debug</code> implementations, so we import the trait.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> std::fmt::Debug;</code></pre>
+<h2 id="definitions">Definitions</h2>
+<h3 id="databasename">DatabaseName</h3>
+<p>The DatabaseName is anything we can use to name a database. Currently, this type is just an alias for String.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">type</span> DatabaseName = String;</code></pre>
+<h3 id="document">Document</h3>
+<p>CouchDB is all about handling documents, which means we have to find a definition for what constitutes a document. In our case, we decide that anything that can be serialised and deserialised by serde is a document.</p>
+<p>Also, we provide a blanket implementation that ensures that every type that is Deserialize and Serialize.</p>
+<p>The Document trait is a marker trait and holds no methods.</p>
+<p>Documents, as a design choice, don’t hold information about the database they were loaded from.</p>
+<p>Finally, all Documents must be <code>Send</code>, as the represent plain data.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> Document: Deserialize + Serialize + <span class="kw">Send</span> {}
+
+<span class="kw">impl</span>&lt;D: Deserialize + Serialize + <span class="kw">Send</span> + ?<span class="kw">Sized</span>&gt; Document <span class="kw">for</span> D {}</code></pre>
+<h3 id="key">Key</h3>
+<p>Keys are the main method of addressing Documents in CouchDB. As keys can take many forms and are regularly used to encode data, we only express the bare minimum as a trait.</p>
+<p>Keys also encode the revision of the current document. The revision is optional, but must be given for documents already in the database.</p>
+<p>Along with the trait definition, we ship the most basic implementation of it for users to use, a simple struct with a <code>String</code> key and an optional <code>rev</code> <code>String</code>.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> Key: <span class="kw">Eq</span> + Clone + Debug + <span class="kw">Send</span> {
+    <span class="kw">fn</span> id(&amp;<span class="kw">self</span>) -&gt; &amp;<span class="kw">str</span>;
+    <span class="kw">fn</span> rev(&amp;<span class="kw">self</span>) -&gt; <span class="kw">Option</span>&lt;&amp;<span class="kw">str</span>&gt;;
+    <span class="kw">fn</span> from_id_and_rev(id: String, rev: <span class="kw">Option</span>&lt;String&gt;) -&gt; <span class="kw">Self</span>;
+}
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Debug<span class="ot">,</span>Clone<span class="ot">,</span>PartialEq<span class="ot">,</span><span class="kw">Eq</span><span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> SimpleKey {
+    <span class="kw">pub</span> id: String,
+    <span class="kw">pub</span> rev: <span class="kw">Option</span>&lt;String&gt;,
+}
+
+<span class="kw">impl</span> Key <span class="kw">for</span> SimpleKey {
+    <span class="kw">fn</span> id(&amp;<span class="kw">self</span>) -&gt; &amp;<span class="kw">str</span> {
+        &amp;<span class="kw">self</span>.id
+    }
+
+    <span class="kw">fn</span> rev(&amp;<span class="kw">self</span>) -&gt; <span class="kw">Option</span>&lt;&amp;<span class="kw">str</span>&gt; {
+        <span class="kw">match</span> <span class="kw">self</span>.rev {
+            <span class="kw">Some</span>(<span class="kw">ref</span> string) =&gt; <span class="kw">Some</span>(string),
+            <span class="kw">None</span> =&gt; <span class="kw">None</span>,
+        }
+    }
+
+    <span class="kw">fn</span> from_id_and_rev(id: String, rev: <span class="kw">Option</span>&lt;String&gt;) -&gt; <span class="kw">Self</span> {
+        SimpleKey { id: id, rev: rev }
+    }
+}
+
+<span class="kw">impl</span> From&lt;String&gt; <span class="kw">for</span> SimpleKey {
+    <span class="kw">fn</span> from(string: String) -&gt; SimpleKey {
+        SimpleKey {
+            id: string,
+            rev: <span class="kw">None</span>,
+        }
+    }
+}</code></pre>
+<h3 id="the-client-trait">The Client Trait</h3>
+<p>The client trait is the entry point to all global storage level operations of CouchDB. Mostly, this is querying for named databases.</p>
+<p>Other operations are currently not supported.</p>
+<p>All operations return a result.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> Client: Default {
+    <span class="kw">type</span> Database: Database;
+
+    fn find_database(&amp;self, name: DatabaseName) -&gt; BoxFuture&lt;DatabaseState&lt;<span class="kw">Self</span>::Database, &lt;&lt;<span class="kw">Self</span> <span class="kw">as</span> Client&gt;::Database <span class="kw">as</span> Database&gt;::Creator&gt;, Error&gt;;
+}</code></pre>
+<h3 id="the-databasestate-enum">The DatabaseState Enum</h3>
+<p>Querying for a database by name returns an enum describing two possible options:</p>
+<ol style="list-style-type: decimal">
+<li><p>The database exists. A handle to the database can be retrieved from the <code>Existing</code> variant.</p></li>
+<li><p>The database is absent. In this case, the <code>Absent</code> variant holds the handle to a <code>DatabaseCreator</code>. The Creator can then be used to create the database.</p></li>
+</ol>
+<p>For simple querying, <code>existing</code> and <code>absent</code> methods are implemented.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">enum</span> DatabaseState&lt;D: Database, C: DatabaseCreator&gt; {
+    Existing(D),
+    Absent(C),
+}
+
+<span class="kw">impl</span>&lt;D: Database, C: DatabaseCreator&gt; DatabaseState&lt;D, C&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> absent(&amp;<span class="kw">self</span>) -&gt; <span class="kw">bool</span> {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            &amp;DatabaseState::Absent(_) =&gt; <span class="kw">true</span>,
+            _ =&gt; <span class="kw">false</span>,
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> existing(&amp;<span class="kw">self</span>) -&gt; <span class="kw">bool</span> {
+        !<span class="kw">self</span>.absent()
+    }
+}</code></pre>
+<h2 id="the-databasecreator">The DatabaseCreator</h2>
+<p>A DatabaseCreator trait describes the creation of a database of a <em>known</em> name.</p>
+<p>It does not provide a way to create a database by passing a name, as it is intended for use with the DatabaseState enum only. Implementors should pass the name of the database to be created to the underlying structure.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> DatabaseCreator
+    where <span class="kw">Self</span>: <span class="kw">Sized</span> + <span class="kw">Send</span>
+{
+    <span class="kw">type</span> D: Database;
+
+    fn create(self) -&gt; BoxFuture&lt;<span class="kw">Self</span>::D, Error&gt;;
+}</code></pre>
+<h3 id="the-database-trait">The <code>Database</code> trait</h3>
+<p>The <code>Database</code> trait describes one <code>database</code> in CouchDB lingo. A database is a seperate key-value bucket, holding documents and design documents.</p>
+<h3 id="lifecycle">Lifecycle</h3>
+<p>A struct implementing the <code>Database</code> trait also allows destroying the database, which also deletes all documents along with it.</p>
+<p>Destroying the database is a consuming operation, returning a <code>DatabaseCreator</code> on success, to allow creating it again if wanted.</p>
+<h3 id="databaseinfo">DatabaseInfo</h3>
+<p>DatabaseInfo provides access to several pieces of data a <code>CouchDB</code>-like database <em>must</em> implement. Several clients might give richer information for which they should build additional interfaces.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">struct</span> DatabaseInfo {
+    instance_start_time: String,
+    update_seq: UpdateSeq,
+}
+
+<span class="kw">impl</span> DatabaseInfo {
+    <span class="kw">pub</span> <span class="kw">fn</span> new(instance_start_time: String, update_seq: UpdateSeq) -&gt; DatabaseInfo {
+        DatabaseInfo {
+            instance_start_time: instance_start_time,
+            update_seq: update_seq,
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> instance_start_time(&amp;<span class="kw">self</span>) -&gt; &amp;<span class="kw">str</span> {
+        <span class="kw">self</span>.instance_start_time.as_ref()
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> update_seq(&amp;<span class="kw">self</span>) -&gt; &amp;UpdateSeq {
+        &amp;<span class="kw">self</span>.update_seq
+    }
+}</code></pre>
+<h3 id="updateseq">UpdateSeq</h3>
+<p>The CouchDB update sequence is <a href="https://github.com/pouchdb/pouchdb/issues/3220">either a number, a string or an array of a number and a string</a>. This complexity should be hidden from users, but put into the respective clients.</p>
+<p>UpdateSeq is used in the replication protocol and checks if two databases have reached the same state.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="ot">#[</span>derive<span class="ot">(</span><span class="kw">Eq</span><span class="ot">,</span> PartialEq<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> UpdateSeq {
+    Numeric(<span class="kw">u64</span>),
+    String(String),
+    Pair(<span class="kw">u64</span>, String)
+}</code></pre>
+<h3 id="database-access">Database access</h3>
+<p>The methods for database access are all generic over the key and the document type(s) retrieved. Serialisation and Deserialisation failures are expressed as Errors.</p>
+<ul>
+<li><p><code>info</code>: retrieve general info about the database.</p></li>
+<li><p><code>doc</code>: returns a handle on a database entry, described in “The <code>DatabaseEntry</code> enum”</p></li>
+<li><p><code>insert</code>: directly inserts a document without previously retrieving information about it. Occuring conflicts are errors.</p></li>
+<li><p><code>delete</code>: directly deletes a document without previously retrieving information about it. Occuring conflicts or missing necessary revision information results in an error.</p></li>
+</ul>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> Database
+    where <span class="kw">Self</span>: <span class="kw">Sized</span> + <span class="kw">Send</span>
+{
+    <span class="kw">type</span> Creator: DatabaseCreator&lt;D = <span class="kw">Self</span>&gt;;
+    <span class="co">//type DBInfo: DatabaseInfo;</span>
+
+    <span class="co">//fn info(self) -&gt; BoxFuture&lt;Self::DBInfo, Error&gt;;</span>
+    <span class="kw">fn</span> destroy(<span class="kw">self</span>) -&gt; BoxFuture&lt;<span class="kw">Self</span>::Creator, Error&gt;;
+    <span class="kw">fn</span> info(&amp;<span class="kw">self</span>) -&gt; BoxFuture&lt;DatabaseInfo, Error&gt;;
+    <span class="kw">fn</span> doc&lt;K: Key, D: Document&gt;(&amp;<span class="kw">self</span>, key: K) -&gt; BoxFuture&lt;DatabaseEntry&lt;K, D, <span class="kw">Self</span>&gt;, Error&gt;;
+    <span class="kw">fn</span> insert&lt;K: Key, D: Document&gt;(&amp;<span class="kw">self</span>, key: K, doc: D) -&gt; BoxFuture&lt;(K, D), Error&gt;;
+    <span class="kw">fn</span> delete&lt;K: Key&gt;(&amp;<span class="kw">self</span>, key: K) -&gt; BoxFuture&lt;(), Error&gt;;
+}</code></pre>
+<h3 id="the-databaseentry-enum">The <code>DatabaseEntry</code> enum</h3>
+<p>The <code>DatabaseEntry</code> enum describes the three possible states of an entry, queried by key, in a CouchDB database:</p>
+<ul>
+<li><code>Present</code>: There is a document for this key</li>
+<li><code>Absent</code>: There is no document for this key</li>
+<li><code>Conflicted</code> : There are conflicts for this key</li>
+</ul>
+<p>As this information makes no sense without knowing the database the key belongs to, all variants of <code>DatabaseEntry</code> hold a reference to the <code>Database</code> handle they result from.</p>
+<p>For all three variants, convenience constructors are provided.</p>
+<p>An entry is considered “existing” if there’s either a document for this key, or a conflicts. An appropriate query method is provided.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="ot">#[</span>derive<span class="ot">(</span>Debug<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> DatabaseEntry&lt;K: Key, D: Document, DB: Database&gt; {
+    Present { key: K, doc: D, database: DB },
+    Absent { key: K, database: DB },
+    Conflicted {
+        key: K,
+        documents: Vec&lt;D&gt;,
+        database: DB,
+    },
+}
+
+<span class="kw">impl</span>&lt;K: Key, D: Document, DB: Database&gt; DatabaseEntry&lt;K, D, DB&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> present(key: K, doc: D, database: DB) -&gt; DatabaseEntry&lt;K, D, DB&gt; {
+        DatabaseEntry::Present {
+            key: key,
+            doc: doc,
+            database: database,
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> absent(key: K, database: DB) -&gt; DatabaseEntry&lt;K, D, DB&gt; {
+        DatabaseEntry::Absent {
+            key: key,
+            database: database,
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> exists(&amp;<span class="kw">self</span>) -&gt; <span class="kw">bool</span> {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            &amp;DatabaseEntry::Present { .. } |
+            &amp;DatabaseEntry::Conflicted { .. } =&gt; <span class="kw">true</span>,
+            _ =&gt; <span class="kw">false</span>,
+        }
+    }
+}</code></pre>
+<h3 id="decorations">Decorations</h3>
+<p>Standard operations over the described types are implemented as decorations and can be found in the <code>decorations</code> module.</p>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

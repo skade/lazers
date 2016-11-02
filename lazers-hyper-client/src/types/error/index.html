@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> serde;
+<span class="kw">use</span> serde::de::Deserialize;
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Debug<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">enum</span> Error {
+    Conflict(String),
+    BadRequest(String),
+}
+
+
+<span class="kw">enum</span> ErrorField {
+    Error,
+    Reason,
+}
+
+<span class="kw">impl</span> Deserialize <span class="kw">for</span> Error {
+    <span class="kw">fn</span> deserialize&lt;D&gt;(deserializer: &amp;<span class="kw">mut</span> D) -&gt; <span class="kw">Result</span>&lt;Error, D::Error&gt;
+        where D: serde::Deserializer
+    {
+        deserializer.deserialize(ErrorVisitor)
+    }
+}
+
+<span class="kw">impl</span> serde::Deserialize <span class="kw">for</span> ErrorField {
+    <span class="kw">fn</span> deserialize&lt;D&gt;(deserializer: &amp;<span class="kw">mut</span> D) -&gt; <span class="kw">Result</span>&lt;ErrorField, D::Error&gt;
+        where D: serde::de::Deserializer
+    {
+        <span class="kw">struct</span> ErrorFieldVisitor;
+
+        <span class="kw">impl</span> serde::de::Visitor <span class="kw">for</span> ErrorFieldVisitor {
+            <span class="kw">type</span> Value = ErrorField;
+
+            <span class="kw">fn</span> visit_str&lt;E&gt;(&amp;<span class="kw">mut</span> <span class="kw">self</span>, value: &amp;<span class="kw">str</span>) -&gt; <span class="kw">Result</span>&lt;ErrorField, E&gt;
+                where E: serde::de::Error
+            {
+                <span class="kw">match</span> value {
+                    <span class="st">&quot;error&quot;</span> =&gt; <span class="kw">Ok</span>(ErrorField::Error),
+                    <span class="st">&quot;reason&quot;</span> =&gt; <span class="kw">Ok</span>(ErrorField::Reason),
+                    _ =&gt; {
+                        <span class="kw">Err</span>(serde::de::Error::unknown_field(<span class="ot">format!</span>(<span class="st">&quot;expected error or reason \</span>
+<span class="st">                                                                     field, got: {}&quot;</span>,
+                                                                    value)
+                            .as_ref()))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize(ErrorFieldVisitor)
+    }
+}
+
+<span class="kw">struct</span> ErrorVisitor;
+
+<span class="kw">impl</span> serde::de::Visitor <span class="kw">for</span> ErrorVisitor {
+    <span class="kw">type</span> Value = Error;
+
+    <span class="kw">fn</span> visit_map&lt;V&gt;(&amp;<span class="kw">mut</span> <span class="kw">self</span>, <span class="kw">mut</span> visitor: V) -&gt; <span class="kw">Result</span>&lt;Error, V::Error&gt;
+        where V: serde::de::MapVisitor
+    {
+        <span class="kw">let</span> <span class="kw">mut</span> error: <span class="kw">Option</span>&lt;String&gt; = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> reason = <span class="kw">None</span>;
+
+        <span class="kw">loop</span> {
+            <span class="kw">match</span> <span class="ot">try!</span>(visitor.visit_key()) {
+                <span class="kw">Some</span>(ErrorField::Error) =&gt; {
+                    error = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">Some</span>(ErrorField::Reason) =&gt; {
+                    reason = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                }
+                <span class="kw">None</span> =&gt; {
+                    <span class="kw">break</span>;
+                }
+            }
+        }
+
+        <span class="kw">let</span> error = <span class="kw">match</span> error {
+            <span class="kw">Some</span>(error) =&gt; error,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;ok&quot;</span>)),
+        };
+
+        <span class="kw">let</span> reason = <span class="kw">match</span> reason {
+            <span class="kw">Some</span>(reason) =&gt; reason,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;seq&quot;</span>)),
+        };
+
+        <span class="ot">try!</span>(visitor.end());
+
+        <span class="kw">match</span> error.as_ref() {
+            <span class="st">&quot;conflict&quot;</span> =&gt; <span class="kw">Ok</span>(Error::Conflict(reason)),
+            <span class="st">&quot;bad_request&quot;</span> =&gt; <span class="kw">Ok</span>(Error::BadRequest(reason)),
+            _ =&gt; {
+                <span class="kw">Err</span>(serde::de::Error::invalid_value(<span class="ot">format!</span>(<span class="st">&quot;Unknown error type: {}&quot;</span>, error)
+                    .as_ref()))
+            }
+        }
+    }
+}
+
+
+
+<span class="ot">#[</span>cfg<span class="ot">(</span>test<span class="ot">)]</span>
+<span class="kw">mod</span> tests {
+    <span class="kw">use</span> serde_json <span class="kw">as</span> json;
+    <span class="kw">use</span> <span class="kw">super</span>::Error;
+
+    <span class="ot">#[</span>test<span class="ot">]</span>
+    <span class="kw">fn</span> parses_error() {
+        json::from_str::&lt;Error&gt;(<span class="st">&quot;{</span><span class="ch">\&quot;</span><span class="st">error</span><span class="ch">\&quot;</span><span class="st">:</span><span class="ch">\&quot;</span><span class="st">conflict</span><span class="ch">\&quot;</span><span class="st">,</span><span class="ch">\&quot;</span><span class="st">reason</span><span class="ch">\&quot;</span><span class="st">:</span><span class="ch">\&quot;</span><span class="st">Document update \</span>
+<span class="st">                                 conflict.</span><span class="ch">\&quot;</span><span class="st">}&quot;</span>)
+            .unwrap();
+        json::from_str::&lt;Error&gt;(<span class="st">&quot;{</span><span class="ch">\&quot;</span><span class="st">error</span><span class="ch">\&quot;</span><span class="st">:</span><span class="ch">\&quot;</span><span class="st">bad_request</span><span class="ch">\&quot;</span><span class="st">,</span><span class="ch">\&quot;</span><span class="st">reason</span><span class="ch">\&quot;</span><span class="st">:</span><span class="ch">\&quot;</span><span class="st">Referer header \</span>
+<span class="st">                                 required.</span><span class="ch">\&quot;</span><span class="st">}&quot;</span>)
+            .unwrap();
+
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

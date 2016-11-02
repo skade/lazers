@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="changesstream-structure">ChangesStream structure</h1>
+<p>This library only handles the streaming changes stream, as specified in <a href="">TODO:link</a>.</p>
+<p>There are two kinds of forms this steam can take: The full stream and just changes. This module implements both of them.</p>
+<p>It works by consuming any input stream that implements <code>Read</code>, so it can be used on top of HTTP requests or just File input.</p>
+<h2 id="imports">Imports</h2>
+<p>The module abstracts of raw streams that implement <code>Read</code>, but works linewise. This set of traits is needed to make that convenient.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> std::io::{BufRead, BufReader, Read, Lines};</code></pre>
+<p>The module abstracts over types as parsing information. They are not stored as data itself, so we need PhantomData fields here.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> std::marker::PhantomData;</code></pre>
+<p>We decide to expect all types to be deserializable through Serde. We’re not fully sure if simpler json libs could be allowed for the payload data.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> serde::de::Deserialize;</code></pre>
+<p>We use both out own <code>Change</code> and <code>ChangesLines</code> types. <code>Change</code> is any document change, <code>ChangesLines</code> holds <em>all</em> lines of the changes stream.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> types::change::Change;
+<span class="kw">use</span> types::changes_lines::ChangesLines;</code></pre>
+<h2 id="definitions">Definitions</h2>
+<h3 id="changesstream"><code>ChangesStream</code></h3>
+<p>Provides reading of the CouchDB wire protocol from any stream that implements <code>Read</code>.</p>
+<p>It is generic over the kinds of documents included in the changes stream, as long as they implement “Deserialize”.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="co">/// A handle on a changes stream. Provides reading of events from a source of</span>
+<span class="co">/// type and holds type information about the documents expected.</span>
+<span class="kw">pub</span> <span class="kw">struct</span> ChangesStream&lt;Source: Read, Documents: Deserialize&gt; {
+    source: Lines&lt;BufReader&lt;Source&gt;&gt;,
+    documents: PhantomData&lt;Documents&gt;,
+}</code></pre>
+<h3 id="full"><code>Full</code></h3>
+<p>The <code>Full</code> interface gives raw access to all events happening in the changes stream. This includes <code>LastSeq</code> documents, that are intended for internal tracking.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="co">/// Wrapper for a ChangesStream with full access.</span>
+<span class="kw">pub</span> <span class="kw">struct</span> Full&lt;Source: Read, Documents: Deserialize&gt; {
+    stream: ChangesStream&lt;Source, Documents&gt;,
+}</code></pre>
+<h3 id="changes"><code>Changes</code></h3>
+<p><code>Changes</code> only includes actual document changes and no protocol information. Most notably, it filters out <code>LastSeq</code> messages.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="co">/// Wrapper for a ChangesStream only returning `Change` documents.</span>
+<span class="kw">pub</span> <span class="kw">struct</span> Changes&lt;Source: Read, Documents: Deserialize&gt; {
+    stream: Full&lt;Source, Documents&gt;,
+}</code></pre>
+<p>The implementation of the <code>ChangesStream</code> is intended as a proxy only, it is constructed and then the user selects if the full stream or only changes are wanted. Folding <code>Full</code> and <code>ChangesStream</code> into one was considered, but not used as this provides a symmetric interface, even though <code>Changes</code> internally relies on full.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">impl</span>&lt;Source: Read, Documents: Deserialize&gt; ChangesStream&lt;Source, Documents&gt; {
+    <span class="co">/// Construct a new changes stream out of every `read` source.</span>
+    <span class="co">/// `Documents` needs to be any deserializable type.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> new(source: Source) -&gt; ChangesStream&lt;Source, Documents&gt; {
+        ChangesStream {
+            source: BufReader::new(source).lines(),
+            documents: PhantomData,
+        }
+    }
+
+    <span class="co">/// Get an iterator to iterate over the full changes stream, including</span>
+    <span class="co">/// control events.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> full(<span class="kw">self</span>) -&gt; Full&lt;Source, Documents&gt; {
+        Full { stream: <span class="kw">self</span> }
+    }
+
+    <span class="co">/// Get an iterator to just read the changes out of the stream, without</span>
+    <span class="co">/// control events.</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> changes(<span class="kw">self</span>) -&gt; Changes&lt;Source, Documents&gt; {
+        Changes { stream: <span class="kw">self</span>.full() }
+    }
+}</code></pre>
+<h3 id="iterator-implementations">Iterator implementations</h3>
+<p>The iterator implementations are rather straight forward, with <code>Full</code> delegating to <code>ChangesLines</code> for parsing and unwrapping its results.</p>
+<p>Note that this implementation silently eats errors (including connection errors!) currently.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">impl</span>&lt;Source: Read, Documents: Deserialize&gt; Iterator <span class="kw">for</span> Full&lt;Source, Documents&gt; {
+    <span class="kw">type</span> Item = ChangesLines&lt;Documents&gt;;
+
+    <span class="ot">#[</span>inline<span class="ot">]</span>
+    <span class="kw">fn</span> next(&amp;<span class="kw">mut</span> <span class="kw">self</span>) -&gt; <span class="kw">Option</span>&lt;ChangesLines&lt;Documents&gt;&gt; {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="kw">Some</span>(elem) = <span class="kw">self</span>.stream.source.next() {
+            elem.ok()
+                .iter()
+                .filter_map(|line| ChangesLines::parse(line).ok())
+                .nth(<span class="dv">0</span>)
+        } <span class="kw">else</span> {
+            <span class="kw">None</span>
+        }
+
+    }
+}
+
+<span class="kw">impl</span>&lt;Source: Read, Documents: Deserialize&gt; Iterator <span class="kw">for</span> Changes&lt;Source, Documents&gt; {
+    <span class="kw">type</span> Item = Change&lt;Documents&gt;;
+
+    <span class="ot">#[</span>inline<span class="ot">]</span>
+    <span class="kw">fn</span> next(&amp;<span class="kw">mut</span> <span class="kw">self</span>) -&gt; <span class="kw">Option</span>&lt;Change&lt;Documents&gt;&gt; {
+        <span class="kw">if</span> <span class="kw">let</span> <span class="kw">Some</span>(next) = <span class="kw">self</span>.stream.next() {
+            next.to_change()
+        } <span class="kw">else</span> {
+            <span class="kw">None</span>
+        }
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

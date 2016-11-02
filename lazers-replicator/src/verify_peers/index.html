@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> <span class="kw">super</span>::Replicator;
+<span class="kw">use</span> lazers_traits::prelude::*;
+
+<span class="kw">use</span> futures::Future;
+<span class="kw">use</span> futures::BoxFuture;
+<span class="kw">use</span> futures::failed;
+<span class="kw">use</span> futures::finished;
+
+<span class="kw">use</span> std::sync::Arc;
+<span class="kw">use</span> backtrace;
+<span class="kw">use</span> <span class="kw">super</span>::Unconnected <span class="kw">as</span> ReplicatorUnconnected;
+
+<span class="kw">use</span> std::convert::From <span class="kw">as</span> TransitionFrom;</code></pre>
+<h2 id="verify-peers">Verify peers</h2>
+<p>We implement the peer verification as described <a href="http://docs.couchdb.org/en/1.6.1/replication/protocol.html#verify-peers">here</a>.</p>
+<p>We follow a state-machine like pattern here and name all possible states first. We label all states by using zero sized structs. They only serve as information for the type system.</p>
+<p>Connections between states are implemented using the <code>From</code> trait, aliased as <code>TransitionFrom</code>.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">trait</span> State {}
+
+<span class="kw">pub</span> <span class="kw">struct</span> Unconnected;
+<span class="kw">impl</span> State <span class="kw">for</span> Unconnected {}
+
+<span class="kw">pub</span> <span class="kw">struct</span> SourceExisting;
+<span class="kw">impl</span> State <span class="kw">for</span> SourceExisting {}
+
+<span class="kw">impl</span> TransitionFrom&lt;Unconnected&gt; <span class="kw">for</span> SourceExisting {
+    <span class="kw">fn</span> from(_: Unconnected) -&gt; SourceExisting {
+        SourceExisting
+    }
+}
+
+<span class="kw">pub</span> <span class="kw">struct</span> TargetAbsent;
+<span class="kw">impl</span> State <span class="kw">for</span> TargetAbsent {}
+
+<span class="kw">impl</span> TransitionFrom&lt;SourceExisting&gt; <span class="kw">for</span> TargetAbsent {
+    <span class="kw">fn</span> from(_: SourceExisting) -&gt; TargetAbsent {
+        TargetAbsent
+    }
+}
+
+<span class="kw">pub</span> <span class="kw">struct</span> TargetExisting;
+<span class="kw">impl</span> State <span class="kw">for</span> TargetExisting {}
+
+<span class="kw">impl</span> TransitionFrom&lt;SourceExisting&gt; <span class="kw">for</span> TargetExisting {
+    <span class="kw">fn</span> from(_: SourceExisting) -&gt; TargetExisting {
+        TargetExisting
+    }
+}
+
+<span class="kw">impl</span> TransitionFrom&lt;TargetAbsent&gt; <span class="kw">for</span> TargetExisting {
+    <span class="kw">fn</span> from(_: TargetAbsent) -&gt; TargetExisting {
+        TargetExisting
+    }
+}</code></pre>
+<p>We then define a <code>VerifyPeers</code> struct to define the flow used in the first few steps. <code>VerifyPeers</code> wraps the replicator struct for the duration of the process.</p>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">pub</span> <span class="kw">struct</span> VerifyPeers&lt;From: Client + <span class="kw">Send</span>, To: Client + <span class="kw">Send</span>, S: State&gt; {
+    <span class="kw">pub</span> replicator: Replicator&lt;From, To, ReplicatorUnconnected&gt;,
+    <span class="ot">#[</span>allow<span class="ot">(</span>dead_code<span class="ot">)]</span>
+    state: S
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span>, To: Client + <span class="kw">Send</span>, T: State&gt; VerifyPeers&lt;From, To, T&gt; {
+    <span class="kw">fn</span> transition&lt;X: State + TransitionFrom&lt;T&gt;&gt;(<span class="kw">self</span>, state: X) -&gt; VerifyPeers&lt;From, To, X&gt; {
+        VerifyPeers { replicator: <span class="kw">self</span>.replicator, state: state }
+    }
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>, To: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>&gt; VerifyPeers&lt;From, To, Unconnected&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> new(replicator: Replicator&lt;From, To, ReplicatorUnconnected&gt;) -&gt; <span class="kw">Self</span> {
+        VerifyPeers { replicator: replicator, state: Unconnected }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> verify_source(<span class="kw">self</span>) -&gt; BoxFuture&lt;VerifyPeers&lt;From, To, SourceExisting&gt;, Error&gt; {
+        <span class="kw">let</span> database = <span class="kw">self</span>.replicator.from_db.clone();
+
+        <span class="kw">let</span> future_db_state = <span class="kw">self</span>.replicator.from.find_database(database);
+        future_db_state.and_then(|db_state| {
+            <span class="kw">if</span> db_state.existing() {
+                finished(<span class="kw">self</span>.transition(SourceExisting)).boxed()
+            } <span class="kw">else</span> {
+                failed(error(<span class="st">&quot;Source doesn&#39;t exist&quot;</span>.into(), backtrace::Backtrace::new())).boxed()
+            }
+        }).boxed()
+    }
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>, To: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>&gt; VerifyPeers&lt;From, To, SourceExisting&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> verify_target(<span class="kw">self</span>) -&gt; BoxFuture&lt;TargetBranch&lt;From, To&gt;, Error&gt; {
+        <span class="kw">let</span> database = <span class="kw">self</span>.replicator.to_db.clone();
+
+        <span class="kw">let</span> future_db_state = <span class="kw">self</span>.replicator.to.find_database(database);
+        future_db_state.and_then(|db_state| {
+            <span class="kw">if</span> db_state.existing() {
+                finished(TargetBranch::Existing(<span class="kw">self</span>.transition(TargetExisting))).boxed()
+            } <span class="kw">else</span> {
+                finished(TargetBranch::Absent(<span class="kw">self</span>.transition(TargetAbsent))).boxed()
+            }
+        }).boxed()
+    }
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>, To: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>&gt; TargetBranch&lt;From, To&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> create_if_absent(<span class="kw">self</span>) -&gt; BoxFuture&lt;VerifyPeers&lt;From, To, TargetExisting&gt;, Error&gt; {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            TargetBranch::Existing(s) =&gt; finished(s).boxed(),
+            TargetBranch::Absent(s) =&gt; {
+                s.create_target()
+            }
+        }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> fail_if_absent(<span class="kw">self</span>) -&gt; BoxFuture&lt;VerifyPeers&lt;From, To, TargetExisting&gt;, Error&gt; {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            TargetBranch::Existing(s) =&gt; finished(s).boxed(),
+            TargetBranch::Absent(_) =&gt; {
+                failed(error(<span class="st">&quot;Target doesn&#39;t exist&quot;</span>.into(), backtrace::Backtrace::new())).boxed()
+            }
+        }
+    }
+}
+
+<span class="kw">impl</span>&lt;From: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>, To: Client + <span class="kw">Send</span> + <span class="ot">&#39;static</span>&gt; VerifyPeers&lt;From, To, TargetAbsent&gt; {
+    <span class="kw">pub</span> <span class="kw">fn</span> create_target(<span class="kw">self</span>) -&gt; BoxFuture&lt;VerifyPeers&lt;From, To, TargetExisting&gt;, Error&gt; {
+        <span class="kw">let</span> database = <span class="kw">self</span>.replicator.to_db.clone();
+
+        <span class="kw">let</span> future_db_state = <span class="kw">self</span>.replicator.to.find_database(database);
+        future_db_state.or_create().and_then(|_| {
+            finished(<span class="kw">self</span>.transition(TargetExisting))
+        }).boxed()
+    }
+}
+
+<span class="kw">pub</span> <span class="kw">enum</span> TargetBranch&lt;From: Client + <span class="kw">Send</span>, To: Client + <span class="kw">Send</span>&gt; {
+    Existing(VerifyPeers&lt;From, To, TargetExisting&gt;),
+    Absent(VerifyPeers&lt;From, To, TargetAbsent&gt;)
+}
+
+<span class="kw">fn</span> error(message: String, backtrace: backtrace::Backtrace) -&gt; Error {
+    Error(ErrorKind::ClientError(message), (<span class="kw">None</span>, Arc::new(backtrace)))
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

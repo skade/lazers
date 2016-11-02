@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="contributing">Contributing</h1>
+<h2 id="getting-started">Getting started</h2>
+<p>If you don’t have it installed already, install Rust and CouchDB:</p>
+<ul>
+<li><a href="https://doc.rust-lang.org/book/getting-started.html">Rust</a></li>
+<li><a href="http://couchdb.apache.org/">CouchDB</a></li>
+</ul>
+<p>Make sure CouchDB is running.</p>
+<p>Clone <a href="https://github.com/skade/lazers">the repository</a>.</p>
+<p>Navigate the subdirectory (e.g. <code>lazers-hyper-client</code>) you want to work in and type:</p>
+<pre class="sourceCode bash"><code class="sourceCode bash">$ <span class="kw">cargo</span> build
+$ <span class="kw">cargo</span> test</code></pre>
+<p>If projects rely on each other (e.g. lazers-hyper-client depends on lazers-traits), the depending project will be built automatically.</p>
+<p>That is all, you are ready to go!</p>
+<h2 id="state-of-the-project">State of the project</h2>
+<p>The project is currently experimental. Expect API changes.</p>
+<h2 id="opportunities">Opportunities</h2>
+<p>The project is currently experimental. Think something is not a good idea? Change it!</p>
+<h2 id="do-i-need-to-know-rust">Do I need to know Rust?</h2>
+<p>No, but you should obviously bring interest. I’ll happily walk you through the issues you might experience on the way to your first patch.</p>
+<h2 id="do-i-need-to-know-couchdb">Do I need to know CouchDB?</h2>
+<p>No. CouchDB is well-documented and currently, most of the work is in implementing the public interface.</p>
+<h2 id="expected-quality-of-patches">Expected quality of patches</h2>
+<p>I’m fine with anything that compiles. Even if you break the tests, make sure you submit the patch, we can get started from there.</p>
+<h2 id="using-tango">Using Tango</h2>
+<p>I’m rather convinced that I want to stick to tango. Here’s how to work with it:</p>
+<p>Tango is working in a bidirectional fashion. Whenever you run <code>cargo build</code>, it generates Rust sourcecode from the markdown input. You can then edit <em>any of both files</em>, as long as you keep the other untouched. On the next <code>cargo build</code>, Tango will update the unchanged file. So you can work with whatever file you want.</p>
+<p>Just make sure you later commit the right one.</p>
+<p>The benefit of tango is the extensive long-form documentation it provides.</p>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>

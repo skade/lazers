@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laze RS</title>
+    <link rel="stylesheet" href="/css/hack.css">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/css/highlight.css">
+  </head>
+  <body class="hack">
+    <div class="container">
+
+<h1 id="the-couchdb-database-document">The CouchDB database document</h1>
+<pre><code>{&quot;db_name&quot;:&quot;test&quot;,&quot;doc_count&quot;:0,&quot;doc_del_count&quot;:0,&quot;update_seq&quot;:0,&quot;purge_seq&quot;:0,&quot;compact_running&quot;:false,&quot;disk_size&quot;:79,&quot;data_size&quot;:0,&quot;instance_start_time&quot;:&quot;1475608668265086&quot;,&quot;disk_format_version&quot;:6,&quot;committed_update_seq&quot;:0}</code></pre>
+<pre class="sourceCode rust"><code class="sourceCode rust"><span class="kw">use</span> serde;
+<span class="kw">use</span> serde::de::Deserialize;
+
+<span class="ot">#[</span>derive<span class="ot">(</span>Debug<span class="ot">)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> CouchDBInfo {
+    <span class="kw">pub</span> db_name: String,
+    <span class="kw">pub</span> doc_count: <span class="kw">u64</span>,
+    <span class="kw">pub</span> doc_del_count: <span class="kw">u64</span>,
+    <span class="kw">pub</span> update_seq: <span class="kw">u64</span>,
+    <span class="kw">pub</span> purge_seq: <span class="kw">u64</span>,
+    <span class="kw">pub</span> compact_running: <span class="kw">bool</span>,
+    <span class="kw">pub</span> disk_size: <span class="kw">u64</span>,
+    <span class="kw">pub</span> data_size: <span class="kw">u64</span>,
+    <span class="kw">pub</span> instance_start_time: String,
+    <span class="kw">pub</span> disk_format_version: <span class="kw">u64</span>,
+    <span class="kw">pub</span> committed_update_seq: <span class="kw">u64</span>
+}
+
+<span class="kw">enum</span> CouchDBInfoField {
+    DbName,
+    DocCount,
+    DocDelCount,
+    UpdateSeq,
+    PurgeSeq,
+    CompactRunning,
+    DiskSize,
+    DataSize,
+    InstanceStartTime,
+    DiskFormatVersion,
+    CommittedUpdateSeq,
+}
+
+<span class="kw">impl</span> Deserialize <span class="kw">for</span> CouchDBInfo {
+    <span class="kw">fn</span> deserialize&lt;D&gt;(deserializer: &amp;<span class="kw">mut</span> D) -&gt; <span class="kw">Result</span>&lt;CouchDBInfo, D::Error&gt;
+        where D: serde::Deserializer
+    {
+        deserializer.deserialize(CouchDBInfoVisitor)
+    }
+}
+
+<span class="kw">impl</span> serde::Deserialize <span class="kw">for</span> CouchDBInfoField {
+    <span class="kw">fn</span> deserialize&lt;D&gt;(deserializer: &amp;<span class="kw">mut</span> D) -&gt; <span class="kw">Result</span>&lt;CouchDBInfoField, D::Error&gt;
+        where D: serde::de::Deserializer
+    {
+        <span class="kw">struct</span> CouchDBInfoFieldVisitor;
+
+        <span class="kw">impl</span> serde::de::Visitor <span class="kw">for</span> CouchDBInfoFieldVisitor {
+            <span class="kw">type</span> Value = CouchDBInfoField;
+
+            <span class="kw">fn</span> visit_str&lt;E&gt;(&amp;<span class="kw">mut</span> <span class="kw">self</span>, value: &amp;<span class="kw">str</span>) -&gt; <span class="kw">Result</span>&lt;CouchDBInfoField, E&gt;
+                where E: serde::de::Error
+            {
+                <span class="kw">match</span> value {
+                    <span class="st">&quot;db_name&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::DbName),
+                    <span class="st">&quot;doc_count&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::DocCount),
+                    <span class="st">&quot;doc_del_count&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::DocDelCount),
+                    <span class="st">&quot;update_seq&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::UpdateSeq),
+                    <span class="st">&quot;purge_seq&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::PurgeSeq),
+                    <span class="st">&quot;compact_running&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::CompactRunning),
+                    <span class="st">&quot;disk_size&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::DiskSize),
+                    <span class="st">&quot;data_size&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::DataSize),
+                    <span class="st">&quot;instance_start_time&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::InstanceStartTime),
+                    <span class="st">&quot;disk_format_version&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::DiskFormatVersion),
+                    <span class="st">&quot;committed_update_seq&quot;</span> =&gt; <span class="kw">Ok</span>(CouchDBInfoField::CommittedUpdateSeq),
+                    _ =&gt; {
+                        <span class="kw">Err</span>(serde::de::Error::unknown_field(<span class="ot">format!</span>(<span class="st">&quot;expected a document info field</span>
+<span class="st">                                                                     field, got: {}&quot;</span>,
+                                                                    value)
+                            .as_ref()))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize(CouchDBInfoFieldVisitor)
+    }
+}
+
+<span class="kw">struct</span> CouchDBInfoVisitor;
+
+<span class="kw">impl</span> serde::de::Visitor <span class="kw">for</span> CouchDBInfoVisitor {
+    <span class="kw">type</span> Value = CouchDBInfo;
+
+    <span class="kw">fn</span> visit_map&lt;V&gt;(&amp;<span class="kw">mut</span> <span class="kw">self</span>, <span class="kw">mut</span> visitor: V) -&gt; <span class="kw">Result</span>&lt;CouchDBInfo, V::Error&gt;
+        where V: serde::de::MapVisitor
+    {
+        <span class="kw">let</span> <span class="kw">mut</span> db_name = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> doc_count = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> doc_del_count = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> update_seq = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> purge_seq = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> compact_running = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> disk_size = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> data_size = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> instance_start_time = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> disk_format_version = <span class="kw">None</span>;
+        <span class="kw">let</span> <span class="kw">mut</span> committed_update_seq = <span class="kw">None</span>;
+
+        <span class="kw">loop</span> {
+            <span class="kw">match</span> <span class="ot">try!</span>(visitor.visit_key()) {
+                <span class="kw">Some</span>(CouchDBInfoField::DbName) =&gt; {
+                    db_name = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::DocCount) =&gt; {
+                    doc_count = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::DocDelCount) =&gt; {
+                    doc_del_count = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::UpdateSeq) =&gt; {
+                    update_seq = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::PurgeSeq) =&gt; {
+                    purge_seq = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::CompactRunning) =&gt; {
+                    compact_running = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::DiskSize) =&gt; {
+                    disk_size = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::DataSize) =&gt; {
+                    data_size = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::InstanceStartTime) =&gt; {
+                    instance_start_time = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::DiskFormatVersion) =&gt; {
+                    disk_format_version = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">Some</span>(CouchDBInfoField::CommittedUpdateSeq) =&gt; {
+                    committed_update_seq = <span class="kw">Some</span>(<span class="ot">try!</span>(visitor.visit_value()));
+                },
+                <span class="kw">None</span> =&gt; <span class="kw">break</span>
+            }
+        }
+
+        <span class="kw">let</span> db_name = <span class="kw">match</span> db_name {
+            <span class="kw">Some</span>(db_name) =&gt; db_name,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;db_name&quot;</span>)),
+        };
+
+        <span class="kw">let</span> doc_count = <span class="kw">match</span> doc_count {
+            <span class="kw">Some</span>(doc_count) =&gt; doc_count,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;doc_count&quot;</span>)),
+        };
+
+        <span class="kw">let</span> doc_del_count = <span class="kw">match</span> doc_del_count {
+            <span class="kw">Some</span>(doc_del_count) =&gt; doc_del_count,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;doc_del_count&quot;</span>)),
+        };
+
+        <span class="kw">let</span> update_seq = <span class="kw">match</span> update_seq {
+            <span class="kw">Some</span>(update_seq) =&gt; update_seq,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;update_seq&quot;</span>)),
+        };
+
+        <span class="kw">let</span> purge_seq = <span class="kw">match</span> purge_seq {
+            <span class="kw">Some</span>(purge_seq) =&gt; purge_seq,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;purge_seq&quot;</span>)),
+        };
+
+        <span class="kw">let</span> compact_running = <span class="kw">match</span> compact_running {
+            <span class="kw">Some</span>(compact_running) =&gt; compact_running,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;compact_running&quot;</span>)),
+        };
+
+        <span class="kw">let</span> disk_size = <span class="kw">match</span> disk_size {
+            <span class="kw">Some</span>(disk_size) =&gt; disk_size,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;disk_size&quot;</span>)),
+        };
+
+        <span class="kw">let</span> data_size = <span class="kw">match</span> data_size {
+            <span class="kw">Some</span>(data_size) =&gt; data_size,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;data_size&quot;</span>)),
+        };
+
+        <span class="kw">let</span> instance_start_time = <span class="kw">match</span> instance_start_time {
+            <span class="kw">Some</span>(instance_start_time) =&gt; instance_start_time,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;instance_start_time&quot;</span>)),
+        };
+
+        <span class="kw">let</span> disk_format_version = <span class="kw">match</span> disk_format_version {
+            <span class="kw">Some</span>(disk_format_version) =&gt; disk_format_version,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;disk_format_version&quot;</span>)),
+        };
+
+        <span class="kw">let</span> committed_update_seq = <span class="kw">match</span> committed_update_seq {
+            <span class="kw">Some</span>(committed_update_seq) =&gt; committed_update_seq,
+            <span class="kw">None</span> =&gt; <span class="ot">try!</span>(visitor.missing_field(<span class="st">&quot;committed_update_seq&quot;</span>)),
+        };
+
+        <span class="ot">try!</span>(visitor.end());
+
+        <span class="kw">Ok</span>(CouchDBInfo {
+            db_name: db_name,
+            doc_count: doc_count,
+            doc_del_count: doc_del_count,
+            update_seq: update_seq,
+            purge_seq: purge_seq,
+            compact_running: compact_running,
+            disk_size: disk_size,
+            data_size: data_size,
+            instance_start_time: instance_start_time,
+            disk_format_version: disk_format_version,
+            committed_update_seq: committed_update_seq
+        })
+    }
+}
+
+<span class="ot">#[</span>cfg<span class="ot">(</span>test<span class="ot">)]</span>
+<span class="kw">mod</span> tests {
+    <span class="kw">use</span> serde_json <span class="kw">as</span> json;
+    <span class="kw">use</span> <span class="kw">super</span>::CouchDBInfo;
+
+    <span class="ot">#[</span>test<span class="ot">]</span>
+    <span class="kw">fn</span> parses_couchdb_info() {
+        json::from_str::&lt;CouchDBInfo&gt;(<span class="st">&quot;{</span><span class="ch">\&quot;</span><span class="st">db_name</span><span class="ch">\&quot;</span><span class="st">:</span><span class="ch">\&quot;</span><span class="st">test</span><span class="ch">\&quot;</span><span class="st">,</span><span class="ch">\&quot;</span><span class="st">doc_count</span><span class="ch">\&quot;</span><span class="st">:0,</span><span class="ch">\&quot;</span><span class="st">doc_del_count</span><span class="ch">\&quot;</span><span class="st">:0,</span><span class="ch">\&quot;</span><span class="st">update_seq</span><span class="ch">\&quot;</span><span class="st">:0,</span><span class="ch">\&quot;</span><span class="st">purge_seq</span><span class="ch">\&quot;</span><span class="st">:0,</span><span class="ch">\&quot;</span><span class="st">compact_running</span><span class="ch">\&quot;</span><span class="st">:false,</span><span class="ch">\&quot;</span><span class="st">disk_size</span><span class="ch">\&quot;</span><span class="st">:79,</span><span class="ch">\&quot;</span><span class="st">data_size</span><span class="ch">\&quot;</span><span class="st">:0,</span><span class="ch">\&quot;</span><span class="st">instance_start_time</span><span class="ch">\&quot;</span><span class="st">:</span><span class="ch">\&quot;</span><span class="st">1475608668265086</span><span class="ch">\&quot;</span><span class="st">,</span><span class="ch">\&quot;</span><span class="st">disk_format_version</span><span class="ch">\&quot;</span><span class="st">:6,</span><span class="ch">\&quot;</span><span class="st">committed_update_seq</span><span class="ch">\&quot;</span><span class="st">:0}&quot;</span>)
+            .unwrap();
+    }
+}</code></pre>
+
+      <a href="/">top<a/>
+    </div>
+  </body>
+  <script src="./prism.js"></script>
+</html>
