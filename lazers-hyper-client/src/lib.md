@@ -16,6 +16,7 @@ extern crate url;
 extern crate lazers_traits;
 extern crate serde;
 extern crate serde_json;
+#[macro_use] extern crate serde_derive;
 extern crate mime;
 extern crate backtrace;
 extern crate futures;
@@ -295,6 +296,10 @@ impl Database for RemoteDatabase {
 
 impl Client for HyperClient {
     type Database = RemoteDatabase;
+
+    fn id(&self) -> String {
+        self.base_url.into()
+    }
 
     fn find_database(&self,
                      name: DatabaseName)

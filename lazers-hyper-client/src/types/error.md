@@ -1,6 +1,7 @@
 ```rust
 use serde;
 use serde::de::Deserialize;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
@@ -15,7 +16,7 @@ enum ErrorField {
 }
 
 impl Deserialize for Error {
-    fn deserialize<D>(deserializer: &mut D) -> Result<Error, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Error, D::Error>
         where D: serde::Deserializer
     {
         deserializer.deserialize(ErrorVisitor)
@@ -23,7 +24,7 @@ impl Deserialize for Error {
 }
 
 impl serde::Deserialize for ErrorField {
-    fn deserialize<D>(deserializer: &mut D) -> Result<ErrorField, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<ErrorField, D::Error>
         where D: serde::de::Deserializer
     {
         struct ErrorFieldVisitor;
@@ -31,7 +32,7 @@ impl serde::Deserialize for ErrorField {
         impl serde::de::Visitor for ErrorFieldVisitor {
             type Value = ErrorField;
 
-            fn visit_str<E>(&mut self, value: &str) -> Result<ErrorField, E>
+            fn visit_str<E>(self, value: &str) -> Result<ErrorField, E>
                 where E: serde::de::Error
             {
                 match value {
@@ -45,6 +46,10 @@ impl serde::Deserialize for ErrorField {
                     }
                 }
             }
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "a map with an `error` and a `reason` field")
+            }
         }
 
         deserializer.deserialize(ErrorFieldVisitor)
@@ -56,7 +61,7 @@ struct ErrorVisitor;
 impl serde::de::Visitor for ErrorVisitor {
     type Value = Error;
 
-    fn visit_map<V>(&mut self, mut visitor: V) -> Result<Error, V::Error>
+    fn visit_map<V>(self, mut visitor: V) -> Result<Error, V::Error>
         where V: serde::de::MapVisitor
     {
         let mut error: Option<String> = None;
@@ -78,12 +83,12 @@ impl serde::de::Visitor for ErrorVisitor {
 
         let error = match error {
             Some(error) => error,
-            None => try!(visitor.missing_field("ok")),
+            None => try!(visitor.missing_field("error")),
         };
 
         let reason = match reason {
             Some(reason) => reason,
-            None => try!(visitor.missing_field("seq")),
+            None => try!(visitor.missing_field("reason")),
         };
 
         try!(visitor.end());
@@ -96,6 +101,10 @@ impl serde::de::Visitor for ErrorVisitor {
                     .as_ref()))
             }
         }
+    }
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "a map with an `error` and a `reason` field")
     }
 }
 
