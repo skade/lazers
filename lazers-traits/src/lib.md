@@ -190,6 +190,7 @@ pub trait Client: Default {
     type Database: Database;
 
     fn find_database(&self, name: DatabaseName) -> BoxFuture<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>, Error>;
+    fn id(&self) -> String;
 }
 ```
 
