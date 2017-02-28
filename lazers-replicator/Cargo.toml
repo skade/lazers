@@ -10,9 +10,7 @@ futures = "0.1.10"
 backtrace = "0.3.0"
 error-chain = "0.8.1"
 rust-crypto = "0.2.36"
-
-[dependencies.derive_builder]
-git = "https://github.com/colin-kiegel/rust-derive-builder.git"
+derive_builder = "0.3.0"
 
 [dependencies.lazers-changes-stream]
 path = "../lazers-changes-stream"

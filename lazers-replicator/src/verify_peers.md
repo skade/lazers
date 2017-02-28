@@ -97,7 +97,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<Fro
                     finished(self.transition(SourceExisting)).boxed()
                 }
                 _ => {
-                    failed(error("Source doesn't exist".into(), backtrace::Backtrace::new())).boxed()
+                    failed(Error::from("Source doesn't exist")).boxed()
                 }
             }
         }).boxed()
@@ -137,7 +137,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> TargetBranch<Fr
         match self {
             TargetBranch::Existing(s) => finished(s).boxed(),
             TargetBranch::Absent(_) => {
-                failed(error("Target doesn't exist".into(), backtrace::Backtrace::new())).boxed()
+                failed(Error::from("Target doesn't exist")).boxed()
             }
         }
     }
@@ -155,7 +155,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<Fro
                     finished(self.transition(TargetExisting)).boxed()
                 }
                 _ => {
-                    failed(error("Creation of target database failed".into(), backtrace::Backtrace::new())).boxed()
+                    failed(Error::from("Creation of target database failed")).boxed()
                 }
             }
         }).boxed()
@@ -165,9 +165,5 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<Fro
 pub enum TargetBranch<From: Client + Send, To: Client + Send> {
     Existing(VerifyPeers<From, To, TargetExisting>),
     Absent(VerifyPeers<From, To, TargetAbsent>)
-}
-
-fn error(message: String, backtrace: backtrace::Backtrace) -> Error {
-    Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace)))
 }
 ```

@@ -17,7 +17,7 @@ error_chain! {
     //
     // This section can be empty.
     links {
-        lazers_traits::result::Error, lazers_traits::result::ErrorKind, Core;
+        Core(lazers_traits::result::Error, lazers_traits::result::ErrorKind);
     }
 
     // Automatic conversions between this error chain and other
@@ -26,8 +26,8 @@ error_chain! {
     // in this case, the `ErrorKind::Temp` variant.
     //
     // This section can be empty.
-    foreign_links {
-    }
+    //foreign_links {
+    //}
 
     // Define additional `ErrorKind` variants. The syntax here is
     // the same as `quick_error!`, but the `from()` and `cause()`
