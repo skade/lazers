@@ -19,7 +19,9 @@ pub struct ReplicationLog {
     history: Vec<HistoryEntry>,
     replication_id_version: i8,
     session_id: String,
-    source_last_seq: i64
+    source_last_seq: i64,
+    _id: String,
+    _rev: String
 }
 
 #[cfg(test)]
