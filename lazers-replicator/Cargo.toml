@@ -11,6 +11,9 @@ backtrace = "0.3.0"
 error-chain = "0.8.1"
 rust-crypto = "0.2.36"
 derive_builder = "0.3.0"
+serde = "0.9.0"
+serde_json = "0.9.0"
+serde_derive = "0.9.0"
 
 [dependencies.lazers-changes-stream]
 path = "../lazers-changes-stream"

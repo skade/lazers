@@ -7,8 +7,6 @@ use futures::BoxFuture;
 use futures::failed;
 use futures::finished;
 
-use std::sync::Arc;
-use backtrace;
 use super::Unconnected as ReplicatorUnconnected;
 
 use std::convert::From as TransitionFrom;

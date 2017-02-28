@@ -4,11 +4,8 @@ use lazers_traits::prelude::*;
 
 use futures::Future;
 use futures::BoxFuture;
-use futures::failed;
 use futures::finished;
 
-use std::sync::Arc;
-use backtrace;
 use super::PeersVerified as ReplicatorPeersVerified;
 
 use std::convert::From as TransitionFrom;
@@ -74,7 +71,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> GetPeersInforma
         GetPeersInformation { replicator: replicator, state: VerifiedPeers }
     }
 
-    fn get_source_information(mut self) -> BoxFuture<GetPeersInformation<From, To, GotSourceInformation>, Error> {
+    pub fn get_source_information(mut self) -> BoxFuture<GetPeersInformation<From, To, GotSourceInformation>, Error> {
         let future_db_info = self.replicator.from_db.as_ref().unwrap().info();
 
         future_db_info.and_then(|db_info| {
@@ -85,7 +82,7 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> GetPeersInforma
 }
 
 impl<From: Client + Send + 'static, To: Client + Send + 'static> GetPeersInformation<From, To, GotSourceInformation> {
-    fn get_target_information(mut self) -> BoxFuture<GetPeersInformation<From, To, GotTargetInformation>, Error> {
+    pub fn get_target_information(mut self) -> BoxFuture<GetPeersInformation<From, To, GotTargetInformation>, Error> {
         let future_db_info = self.replicator.to_db.as_ref().unwrap().info();
 
         future_db_info.and_then(|db_info| {

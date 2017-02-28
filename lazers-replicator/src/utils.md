@@ -25,9 +25,15 @@ use crypto::md5::Md5;
 use crypto::digest::Digest;
 
 impl<From: Client + Send, To: Client + Send, T: ReplicatorState> Replicator<From, To, T> {
-    pub fn replication_id(self, peer_uuid: String, ) -> String {
+    // TODO: this needs to be fixed to encode the server
+    pub fn replication_id(&self, peer_uuid: &str) -> String {
+        let from_id = self.from.id();
+        let to_id = self.to.id();
+
         let mut md5 = Md5::new();
-        md5.input_str("hello!");
+        md5.input_str(&from_id);
+        md5.input_str(&to_id);
+
         md5.result_str()
     }
 }
