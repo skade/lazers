@@ -338,9 +338,9 @@ pub trait Database
     //fn info(self) -> BoxFuture<Self::DBInfo, Error>;
     fn destroy(self) -> BoxFuture<Self::Creator, Error>;
     fn info(&self) -> BoxFuture<DatabaseInfo, Error>;
-    fn doc<K: Key, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
-    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
-    fn delete<K: Key>(&self, key: K) -> BoxFuture<(), Error>;
+    fn doc<K: Key + 'static, D: Document + 'static>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
+    fn insert<K: Key + 'static, D: Document + 'static>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
+    fn delete<K: Key + 'static>(&self, key: K) -> BoxFuture<(), Error>;
 }
 ```
 

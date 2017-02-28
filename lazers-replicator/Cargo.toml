@@ -6,18 +6,22 @@ authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 build = "tango-build.rs"
 
 [dependencies]
-futures = "0.1.1"
-backtrace = "0.2.3"
-error-chain = "0.2.2"
+futures = "0.1.10"
+backtrace = "0.3.0"
+error-chain = "0.8.1"
+rust-crypto = "0.2.36"
+
+[dependencies.derive_builder]
+git = "https://github.com/colin-kiegel/rust-derive-builder.git"
 
 [dependencies.lazers-changes-stream]
 path = "../lazers-changes-stream"
 
-[dependencies.lazers-hyper-client]
-path = "../lazers-hyper-client"
-
 [dependencies.lazers-traits]
 path = "../lazers-traits"
+
+[dev-dependencies.lazers-hyper-client]
+path = "../lazers-hyper-client"
 
 [build-dependencies]
 tango = "0.5.0"

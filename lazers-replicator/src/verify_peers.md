@@ -17,7 +17,7 @@ use std::convert::From as TransitionFrom;
 ## Verify peers
 
 We implement the peer verification as described
-[here](http://docs.couchdb.org/en/1.6.1/replication/protocol.html#verify-peers).
+[here](http://docs.couchdb.org/en/2.0.0/replication/protocol.html#verify-peers).
 
 We follow a state-machine like pattern here and name all possible states
 first. We label all states by using zero sized structs. They only serve as
@@ -86,30 +86,38 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<Fro
         VerifyPeers { replicator: replicator, state: Unconnected }
     }
 
-    pub fn verify_source(self) -> BoxFuture<VerifyPeers<From, To, SourceExisting>, Error> {
-        let database = self.replicator.from_db.clone();
+    pub fn verify_source(mut self) -> BoxFuture<VerifyPeers<From, To, SourceExisting>, Error> {
+        let database = self.replicator.from_db_name.clone();
 
         let future_db_state = self.replicator.from.find_database(database);
         future_db_state.and_then(|db_state| {
-            if db_state.existing() {
-                finished(self.transition(SourceExisting)).boxed()
-            } else {
-                failed(error("Source doesn't exist".into(), backtrace::Backtrace::new())).boxed()
+            match db_state {
+                DatabaseState::Existing(db) => {
+                    self.replicator.from_db = Some(db);
+                    finished(self.transition(SourceExisting)).boxed()
+                }
+                _ => {
+                    failed(error("Source doesn't exist".into(), backtrace::Backtrace::new())).boxed()
+                }
             }
         }).boxed()
     }
 }
 
 impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, SourceExisting> {
-    pub fn verify_target(self) -> BoxFuture<TargetBranch<From, To>, Error> {
-        let database = self.replicator.to_db.clone();
+    pub fn verify_target(mut self) -> BoxFuture<TargetBranch<From, To>, Error> {
+        let database = self.replicator.to_db_name.clone();
 
         let future_db_state = self.replicator.to.find_database(database);
         future_db_state.and_then(|db_state| {
-            if db_state.existing() {
-                finished(TargetBranch::Existing(self.transition(TargetExisting))).boxed()
-            } else {
-                finished(TargetBranch::Absent(self.transition(TargetAbsent))).boxed()
+            match db_state {
+                DatabaseState::Existing(db) => {
+                    self.replicator.to_db = Some(db);
+                    finished(TargetBranch::Existing(self.transition(TargetExisting))).boxed()
+                }
+                _ => {
+                    finished(TargetBranch::Absent(self.transition(TargetAbsent))).boxed()
+                }
             }
         }).boxed()
     }
@@ -136,12 +144,20 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> TargetBranch<Fr
 }
 
 impl<From: Client + Send + 'static, To: Client + Send + 'static> VerifyPeers<From, To, TargetAbsent> {
-    pub fn create_target(self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
-        let database = self.replicator.to_db.clone();
+    pub fn create_target(mut self) -> BoxFuture<VerifyPeers<From, To, TargetExisting>, Error> {
+        let database = self.replicator.to_db_name.clone();
 
         let future_db_state = self.replicator.to.find_database(database);
-        future_db_state.or_create().and_then(|_| {
-            finished(self.transition(TargetExisting))
+        future_db_state.or_create().and_then(|db_state| {
+            match db_state {
+                DatabaseState::Existing(db) => {
+                    self.replicator.to_db = Some(db);
+                    finished(self.transition(TargetExisting)).boxed()
+                }
+                _ => {
+                    failed(error("Creation of target database failed".into(), backtrace::Backtrace::new())).boxed()
+                }
+            }
         }).boxed()
     }
 }

@@ -9,6 +9,8 @@ html#replication-protocol-algorithm).
 extern crate lazers_traits;
 extern crate futures;
 extern crate backtrace;
+extern crate crypto;
+
 #[macro_use]
 extern crate error_chain;
 
@@ -19,6 +21,8 @@ use futures::BoxFuture;
 use futures::finished;
 
 use std::convert::From as TransitionFrom;
+
+mod utils;
 
 pub mod errors;
 ```
@@ -36,8 +40,12 @@ The Replicator itself has a high-level state machine.
 pub struct Replicator<From: Client + Send, To: Client + Send, State: ReplicatorState> {
     from: From,
     to: To,
-    from_db: DatabaseName,
-    to_db: DatabaseName,
+    from_db_name: DatabaseName,
+    to_db_name: DatabaseName,
+    from_db: Option<From::Database>,
+    to_db: Option<To::Database>,
+    from_db_info: Option<DatabaseInfo>,
+    to_db_info: Option<DatabaseInfo>,
     #[allow(dead_code)]
     state: State
 }
@@ -47,8 +55,12 @@ impl<From: Client + Send, To: Client + Send> Replicator<From, To, Unconnected> {
         Replicator {
             from: from,
             to: to,
-            from_db: from_db,
-            to_db: to_db,
+            from_db_name: from_db,
+            to_db_name: to_db,
+            from_db: None,
+            to_db: None,
+            from_db_info: None,
+            to_db_info: None,
             state: Unconnected
         }
     }
@@ -76,7 +88,7 @@ impl TransitionFrom<Unconnected> for PeersVerified {
 
 impl<From: Client + Send, To: Client + Send, T: ReplicatorState> Replicator<From, To, T> {
     fn transition<X: ReplicatorState + TransitionFrom<T>>(self, state: X) -> Replicator<From, To, X> {
-        Replicator { state: state, from: self.from, to: self.to, from_db: self.from_db, to_db: self.to_db }
+        Replicator { state: state, from: self.from, to: self.to, from_db: self.from_db, to_db: self.to_db, from_db_name: self.from_db_name, to_db_name: self.to_db_name, from_db_info: self.from_db_info, to_db_info: self.to_db_info  }
     }
 }
 ```
@@ -91,7 +103,7 @@ The replication process is implemented in state machines wrapping the steps outl
 
 ```rust
 mod verify_peers;
-//mod get_peers_information;
+mod get_peers_information;
 ```
 
 All these steps wrap the replicator type.

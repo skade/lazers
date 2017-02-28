@@ -14,6 +14,7 @@ serde_json = "0.9.0"
 serde_derive = "0.9.0"
 mime = "0.2.1"
 futures = "0.1.10"
+error-chain = "0.8.1"
 
 [dependencies.lazers-traits]
 path = "../lazers-traits"
