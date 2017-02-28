@@ -5,12 +5,14 @@ use lazers_traits::prelude::*;
 use futures::Future;
 use futures::BoxFuture;
 use futures::finished;
+use futures::future::err;
 
 use super::PeerInformationReceived;
 use super::ReplicatorState;
 
 use std::convert::From as TransitionFrom;
 use lazers_traits::SimpleKey;
+use lazers_traits::DatabaseEntry;
 
 use super::documents::ReplicationLog;
 ```
@@ -95,15 +97,20 @@ impl<From: Client + Send + 'static, To: Client + Send + 'static> FindCommonAnces
 
 impl<From: Client + Send + 'static, To: Client + Send + 'static> FindCommonAncestry<From, To, GeneratedReplicationId> {
     pub fn get_source_replication_log(mut self) -> BoxFuture<FindCommonAncestry<From, To, GotSourceReplicationLog>, Error> {
-        let future_doc = {
+        let future_entry = {
             let db = self.replicator.from_db.as_ref().unwrap();
             let replication_id = self.replicator.replication_id.as_ref().unwrap();
             let key = SimpleKey::from(format!("_local/{}", replication_id));
             db.doc::<SimpleKey, ReplicationLog>(key)
         };
 
-        future_doc.and_then(move |doc| {
-            self.source_replication_log = None;
+        future_entry.and_then(|entry| {
+            match entry {
+                DatabaseEntry::Present { doc, .. } => self.source_replication_log = Some(doc),
+                DatabaseEntry::Absent { .. } => self.source_replication_log = None,
+                DatabaseEntry::Conflicted { .. } => panic!("Unrecoverable: ReplicationLog conflicted")
+            }
+    
             finished(self.transition(GotSourceReplicationLog))
         }).boxed()
     }
