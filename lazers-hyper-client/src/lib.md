@@ -16,9 +16,11 @@ extern crate url;
 extern crate lazers_traits;
 extern crate serde;
 extern crate serde_json;
+#[macro_use] extern crate serde_derive;
 extern crate mime;
 extern crate backtrace;
 extern crate futures;
+#[macro_use] extern crate error_chain;
 
 mod types;
 use types::document_created::DocumentCreated;
@@ -35,15 +37,14 @@ use hyper::header::ContentType;
 use hyper::client::IntoUrl;
 
 use hyper::status::StatusCode;
-use std::sync::Arc;
 
 use url::{Url, ParseError};
 
 use futures::BoxFuture;
 use futures::Future;
-use futures::finished;
-use futures::failed;
-use futures::done;
+use futures::future::result;
+use futures::future::err;
+use futures::future::ok;
 
 pub struct HyperClient {
     inner: hyper::client::Client,
@@ -94,18 +95,53 @@ impl DatabaseCreator for RemoteDatabaseCreator {
 
         match res2 {
             Ok(_) => {
-                finished(RemoteDatabase {
+                ok(RemoteDatabase {
                     name: self.name,
                     base_url: self.base_url,
                 }).boxed()
             }
-            Err(e) => failed(e).boxed(),
+            Err(e) => err(e).boxed(),
         }
     }
 }
 
 impl Database for RemoteDatabase {
     type Creator = RemoteDatabaseCreator;
+
+    fn info(&self) -> BoxFuture<DatabaseInfo, Error> {
+        let mut url = self.base_url.clone();
+        url.set_path(self.name.as_ref());
+        let client = hyper::client::Client::new();
+        let res = client.get(url)
+            .send();
+
+        let res2 = res.chain_err(|| self.name.clone());
+
+        match res2 {
+            Ok(r) => {
+                match r.status {
+                    StatusCode::Ok => {
+                        let info: types::database_info::CouchDBInfo = from_reader(r).unwrap();
+                        let db_info = DatabaseInfo::new(
+                            info.instance_start_time,
+                            UpdateSeq::Numeric(info.update_seq)
+                        );
+
+                        ok(db_info).boxed()
+                    }
+                    StatusCode::NotFound => {
+                        err(Error::from(format!("Database vanished: {}", self.name))).boxed()
+                    }
+                    _ => {
+                        err(Error::from(format!("Unexpected status: {}", r.status))).boxed()
+                    }
+                }
+            },
+            Err(e) => {
+                err(Error::from(format!("Unexpected HTTP error"))).boxed()
+            }
+        }
+    }
 
     fn destroy(self) -> BoxFuture<RemoteDatabaseCreator, Error> {
         let mut url = self.base_url.clone();
@@ -118,12 +154,12 @@ impl Database for RemoteDatabase {
 
         match res2 {
             Ok(_) => {
-                finished(RemoteDatabaseCreator {
+                ok(RemoteDatabaseCreator {
                     name: self.name,
                     base_url: self.base_url,
                 }).boxed()
             }
-            Err(e) => failed(e).boxed(),
+            Err(e) => err(e).boxed(),
         }
     }
 
@@ -144,19 +180,16 @@ impl Database for RemoteDatabase {
                         let key_with_rev = <K as Key>::from_id_and_rev(key.id().to_owned(),
                                                                        Some(rev.tag().to_owned()));
                         let doc = from_reader(r).unwrap();
-                        finished(DatabaseEntry::present(key_with_rev, doc, self.clone())).boxed()
+                        ok(DatabaseEntry::present(key_with_rev, doc, self.clone())).boxed()
                     }
-                    StatusCode::NotFound => finished(DatabaseEntry::absent(key, self.clone())).boxed(),
+                    StatusCode::NotFound => ok(DatabaseEntry::absent(key, self.clone())).boxed(),
                     _ => {
-                        failed(error(format!("Unexpected status: {}", r.status),
-                              backtrace::Backtrace::new())).boxed()
+                        err(Error::from(format!("Unexpected status: {}", r.status))).boxed()
                     }
                 }
             }
             Err(e) => {
-                failed(hyper_error(format!("Unexpected HTTP error"),
-                            e,
-                            backtrace::Backtrace::new())).boxed()
+                err(Error::from(format!("Unexpected HTTP error"))).boxed()
             }
         }
     }
@@ -176,9 +209,7 @@ impl Database for RemoteDatabase {
         let body = match to_string(&doc) {
             Ok(s) => s,
             Err(e) => {
-                return failed(hyper_error(format!("Unexpected HTTP error"),
-                                   e,
-                                   backtrace::Backtrace::new())).boxed()
+                return err(Error::from(format!("Unexpected HTTP error"))).boxed()
             }
         };
 
@@ -202,28 +233,23 @@ impl Database for RemoteDatabase {
                         let response_data: error::Error = from_reader(r).unwrap();
                         match response_data {
                             error::Error::Conflict(reason) => {
-                                conflict(format!("Document update conflict: {}", reason),
-                                         backtrace::Backtrace::new())
+                                Err(Error::from(format!("Document update conflict: {}", reason)))
                             }
                             error::Error::BadRequest(reason) => {
-                                Err(error(format!("Bad request: {}", reason),
-                                      backtrace::Backtrace::new()))
+                                Err(Error::from(format!("Bad request: {}", reason)))
                             }
                         }
                     }
                     _ => {
-                        Err(error(format!("Unexpected status: {}", r.status),
-                              backtrace::Backtrace::new()))
+                        Err(Error::from(format!("Unexpected status: {}", r.status)))
                     }
                 }
             }
             Err(e) => {
-                Err(hyper_error(format!("Unexpected HTTP error"),
-                            e,
-                            backtrace::Backtrace::new()))
+                Err(Error::from(format!("Unexpected HTTP error")))
             }
         };
-        done(client_result).boxed()
+        result(client_result).boxed()
     }
 
     fn delete<K: Key>(&self, key: K) -> BoxFuture<(), Error> {
@@ -239,23 +265,24 @@ impl Database for RemoteDatabase {
                 match r.status {
                     StatusCode::Ok => Ok(()),
                     _ => {
-                        Err(error(format!("Unexpected status: {}", r.status),
-                              backtrace::Backtrace::new()))
+                        Err(Error::from(format!("Unexpected status: {}", r.status)))
                     }
                 }
             }
             Err(e) => {
-                Err(hyper_error(format!("Unexpected HTTP error"),
-                            e,
-                            backtrace::Backtrace::new()))
+                Err(Error::from(format!("Unexpected HTTP error")))
             }
         };
-        done(client_result).boxed()
+        result(client_result).boxed()
     }
 }
 
 impl Client for HyperClient {
     type Database = RemoteDatabase;
+
+    fn id(&self) -> String {
+        self.base_url.to_string()
+    }
 
     fn find_database(&self,
                      name: DatabaseName)
@@ -270,45 +297,26 @@ impl Client for HyperClient {
             Ok(r) => {
                 match r.status {
                     StatusCode::Ok => {
-                        finished(DatabaseState::Existing(RemoteDatabase {
+                        ok(DatabaseState::Existing(RemoteDatabase {
                             name: name,
                             base_url: self.base_url.clone(),
                         })).boxed()
                     }
                     StatusCode::NotFound => {
-                        finished(DatabaseState::Absent(RemoteDatabaseCreator {
+                        ok(DatabaseState::Absent(RemoteDatabaseCreator {
                             name: name,
                             base_url: self.base_url.clone(),
                         })).boxed()
                     }
                     _ => {
-                        failed(error(format!("Unexpected status: {}", r.status),
-                                     backtrace::Backtrace::new())).boxed()
+                        err(Error::from(format!("Unexpected status: {}", r.status))).boxed()
                     }
                 }
             }
             Err(e) => {
-                failed(hyper_error(format!("Unexpected HTTP error"),
-                            e,
-                            backtrace::Backtrace::new())).boxed()
+                err(Error::from(format!("Unexpected HTTP error"))).boxed()
             }
         }
     }
-}
-
-fn hyper_error<E: std::error::Error + Send + 'static>(message: String,
-                                                         error: E,
-                                                         backtrace: backtrace::Backtrace)
-                                                         -> Error {
-    Error(ErrorKind::ClientError(message),
-              (Some(Box::new(error)), Arc::new(backtrace)))
-}
-
-fn error(message: String, backtrace: backtrace::Backtrace) -> Error {
-    Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace)))
-}
-
-fn conflict<T>(message: String, backtrace: backtrace::Backtrace) -> Result<T> {
-    Err(Error(ErrorKind::ClientError(message), (None, Arc::new(backtrace))))
 }
 ```

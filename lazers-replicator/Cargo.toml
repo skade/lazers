@@ -6,10 +6,20 @@ authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 build = "tango-build.rs"
 
 [dependencies]
-hyper = "*"
+futures = "0.1.10"
+backtrace = "0.3.0"
+error-chain = "0.8.1"
+rust-crypto = "0.2.36"
+derive_builder = "0.3.0"
 
 [dependencies.lazers-changes-stream]
 path = "../lazers-changes-stream"
+
+[dependencies.lazers-traits]
+path = "../lazers-traits"
+
+[dev-dependencies.lazers-hyper-client]
+path = "../lazers-hyper-client"
 
 [build-dependencies]
 tango = "0.5.0"

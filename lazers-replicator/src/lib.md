@@ -6,112 +6,129 @@ an implementation of the algorithm described here:
 html#replication-protocol-algorithm).
 
 ```rust
-extern crate hyper;
-use std::marker::PhantomData;
+extern crate lazers_traits;
+extern crate futures;
+extern crate backtrace;
+extern crate crypto;
+
+#[macro_use]
+extern crate error_chain;
+
+use lazers_traits::prelude::*;
+
+use futures::Future;
+use futures::BoxFuture;
+use futures::finished;
+
+use std::convert::From as TransitionFrom;
+
+mod utils;
+
+pub mod errors;
 ```
 
-## Verify peers
 
-We implement the peer verification as described
-[here](http://docs.couchdb.org/en/1.6.1/replication/protocol.html#verify-peers).
+## Replicator
 
-We follow a state-machine like pattern here and name all possible states
-first. We label all states by using zero sized structs. They only serve as
-information for the type system.
+The standard replicator struct is just a pair of clients to sync from and to, along with the databases to use.
 
-```rust
-struct Unconnected;
-struct CheckedSourceExistence;
-struct CheckTargetExistence;
-struct CheckCreateTarget;
-struct CreateTarget;
-struct GetSourceInformation;
-type VerifyError = String;
-struct Abort(VerifyError);
-```
+The two clients don't need to be of the same kind.
 
-We then define a `VerifyPeers` struct to define the flow used in the first
-few steps. `VerifyPeers` also wraps an instance of a `CouchDB` client.
+The Replicator itself has a high-level state machine.
 
 ```rust
-trait Client: Default {
-    fn verify_existence<Url: hyper::client::IntoUrl>(&self, url: Url) -> Result<bool, String>;
+pub struct Replicator<From: Client + Send, To: Client + Send, State: ReplicatorState> {
+    from: From,
+    to: To,
+    from_db_name: DatabaseName,
+    to_db_name: DatabaseName,
+    from_db: Option<From::Database>,
+    to_db: Option<To::Database>,
+    from_db_info: Option<DatabaseInfo>,
+    to_db_info: Option<DatabaseInfo>,
+    #[allow(dead_code)]
+    state: State
 }
 
-struct HyperClient {
-    inner: hyper::client::Client,
-}
-
-impl Default for HyperClient {
-    fn default() -> HyperClient {
-        HyperClient { inner: hyper::client::Client::new() }
-    }
-}
-
-impl Client for HyperClient {
-    fn verify_existence<Url: hyper::client::IntoUrl>(&self, url: Url) -> Result<bool, String> {
-        self.inner
-            .head(url)
-            .send()
-            .map(|_| true)
-            .map_err(|e| e.to_string())
-    }
-}
-
-trait Storage {
-    fn check_database(&self, name: &str) -> Result<bool, String>;
-}
-
-impl<C: Client> Storage for RemoteCouchDB<C> {
-    fn check_database(&self, name: &str) -> Result<bool, String> {
-        self.client.verify_existence(&format!("{}/{}", self.base_url, name))
-    }
-}
-
-struct RemoteCouchDB<C: Client = HyperClient> {
-    client: C,
-    base_url: String,
-}
-
-impl<C: Client> RemoteCouchDB<C> {
-    fn new(base_url: String) -> RemoteCouchDB<C> {
-        RemoteCouchDB {
-            client: C::default(),
-            base_url: base_url,
+impl<From: Client + Send, To: Client + Send> Replicator<From, To, Unconnected> {
+    pub fn new(from: From, to: To, from_db: DatabaseName, to_db: DatabaseName) -> Replicator<From, To, Unconnected> {
+        Replicator {
+            from: from,
+            to: to,
+            from_db_name: from_db,
+            to_db_name: to_db,
+            from_db: None,
+            to_db: None,
+            from_db_info: None,
+            to_db_info: None,
+            state: Unconnected
         }
     }
 }
+```
 
-struct VerifyPeers<State> {
-    source: Box<Storage>,
-    marker: PhantomData<State>,
+### The state machine
+
+The Replicator state machine encodes all high-level steps descriped in the [CouchDB replication protocol](http://docs.couchdb.org/en/2.0.0/replication/protocol.html).
+
+```rust
+pub trait ReplicatorState {}
+
+pub struct Unconnected;
+impl ReplicatorState for Unconnected {}
+
+pub struct PeersVerified;
+impl ReplicatorState for PeersVerified {}
+
+impl TransitionFrom<Unconnected> for PeersVerified {
+    fn from(_: Unconnected) -> PeersVerified {
+        PeersVerified
+    }
 }
 
-impl VerifyPeers<Unconnected> {
-    fn check_source_existence
-        (self,
-         db_name: &str)
-         -> Result<VerifyPeers<CheckedSourceExistence>, VerifyPeers<Abort>> {
-        let source = match self {
-            VerifyPeers { source: s, marker: _ } => s,
-        };
-        let res = source.check_database(db_name);
+impl<From: Client + Send, To: Client + Send, T: ReplicatorState> Replicator<From, To, T> {
+    fn transition<X: ReplicatorState + TransitionFrom<T>>(self, state: X) -> Replicator<From, To, X> {
+        Replicator { state: state, from: self.from, to: self.to, from_db: self.from_db, to_db: self.to_db, from_db_name: self.from_db_name, to_db_name: self.to_db_name, from_db_info: self.from_db_info, to_db_info: self.to_db_info  }
+    }
+}
+```
 
-        match res {
-            Ok(present) if present == true => {
-                Ok(VerifyPeers {
-                    source: source,
-                    marker: PhantomData::<CheckedSourceExistence>,
-                })
-            }
-            _ => {
-                Err(VerifyPeers {
-                    source: source,
-                    marker: PhantomData::<Abort>,
-                })
-            }
+## The replication process
 
-        }
+The replication process is implemented in state machines wrapping the steps outlined in the CouchDB documentation, each implemented in a seperate module:
+
+[`verify_peers`](/lazers-replicator/src/verify_peers) implements peer verification.
+
+[`get_peers_information`](/lazers-replicator/src/get_peers_information) implements getting all important info from both peers.
+
+```rust
+mod verify_peers;
+mod get_peers_information;
+```
+
+All these steps wrap the replicator type.
+
+Finally, they are glued to the replicator as its public interface.
+
+```rust
+impl<From: Client + Send + 'static, To: Client + Send + 'static> Replicator<From, To, Unconnected> {
+    pub fn verify_peers(self) -> BoxFuture<Replicator<From, To, PeersVerified>, Error> {
+        self.setup_peers(false)
+    }
+
+    pub fn setup_peers(self, create_target: bool) -> BoxFuture<Replicator<From, To, PeersVerified>, Error> {
+        let verifier = verify_peers::VerifyPeers::new(self);
+        verifier.verify_source().and_then(|state| {
+            state.verify_target()
+        }).and_then(move |state| {
+            if create_target {
+                state.create_if_absent()
+            } else {
+                state.fail_if_absent()
+            }
+        }).and_then(|verifier| {
+            finished(verifier.replicator.transition(PeersVerified))
+        }).boxed()
     }
 }
 ```

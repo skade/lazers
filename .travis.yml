@@ -2,8 +2,8 @@ language: rust
 services: couchdb
 sudo: false
 rust:
-  - 1.12.1
-  #- nightly
+  - 1.15.0
+  - nightly
 matrix:
   allow_failures:
     - rust: nightly

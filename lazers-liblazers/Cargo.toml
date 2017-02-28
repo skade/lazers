@@ -6,7 +6,7 @@ authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 build = "build.rs"
 
 [dependencies]
-libc = "0.2.14"
+libc = "0.2.20"
 
 [dependencies.lazers-traits]
 path = "../lazers-traits"

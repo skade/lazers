@@ -14,11 +14,12 @@ data format, including simple JSON.
 
 ## Dependencies
 
-`serde` and `serde_json` are used for deserialisation.
+`serde` and `serde_json` are used for deserialisation. `serde_derive` is used for easy derivation of deserialisable types.
 
 ```rust
 extern crate serde;
 extern crate serde_json;
+#[macro_use] extern crate serde_derive;
 ```
 
 ## Exposed modules

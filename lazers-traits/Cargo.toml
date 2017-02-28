@@ -6,9 +6,9 @@ authors = ["Florian Gilcher <florian.gilcher@asquera.de>"]
 build = "tango-build.rs"
 
 [dependencies]
-serde = "0.8.0"
-error-chain = "0.2.2"
-futures = "0.1.1"
+serde = "0.9.0"
+error-chain = "0.8.1"
+futures = "0.1.10"
 
 [build-dependencies]
 tango = "0.5.0"

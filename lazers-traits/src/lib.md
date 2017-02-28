@@ -190,6 +190,7 @@ pub trait Client: Default {
     type Database: Database;
 
     fn find_database(&self, name: DatabaseName) -> BoxFuture<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>, Error>;
+    fn id(&self) -> String;
 }
 ```
 
@@ -263,13 +264,59 @@ Destroying the database is a consuming operation, returning a
 `DatabaseCreator`
 on success, to allow creating it again if wanted.
 
-### Document access
+### DatabaseInfo
 
-The methods for document access are all generic over the key and the
+DatabaseInfo provides access to several pieces of data a `CouchDB`-like database _must_ implement. Several clients might give richer information
+for which they should build additional interfaces.
+
+```rust
+pub struct DatabaseInfo {
+    instance_start_time: String,
+    update_seq: UpdateSeq,
+}
+
+impl DatabaseInfo {
+    pub fn new(instance_start_time: String, update_seq: UpdateSeq) -> DatabaseInfo {
+        DatabaseInfo {
+            instance_start_time: instance_start_time,
+            update_seq: update_seq,
+        }
+    }
+
+    pub fn instance_start_time(&self) -> &str {
+        self.instance_start_time.as_ref()
+    }
+
+    pub fn update_seq(&self) -> &UpdateSeq {
+        &self.update_seq
+    }
+}
+```
+
+### UpdateSeq
+
+The CouchDB update sequence is [either a number, a string or an array of a number and a string](https://github.com/pouchdb/pouchdb/issues/3220). This complexity should be hidden from users, but put into the respective clients.
+
+UpdateSeq is used in the replication protocol and checks if two databases have reached the same state.
+
+```rust
+#[derive(Eq, PartialEq)]
+pub enum UpdateSeq {
+    Numeric(u64),
+    String(String),
+    Pair(u64, String)
+}
+```
+
+### Database access
+
+The methods for database access are all generic over the key and the
 document
 type(s) retrieved. Serialisation and Deserialisation failures are expressed
 as
 Errors.
+
+* `info`: retrieve general info about the database.
 
 * `doc`: returns a handle on a database entry, described in "The
   `DatabaseEntry` enum"
@@ -286,11 +333,14 @@ pub trait Database
     where Self: Sized + Send
 {
     type Creator: DatabaseCreator<D = Self>;
+    //type DBInfo: DatabaseInfo;
 
+    //fn info(self) -> BoxFuture<Self::DBInfo, Error>;
     fn destroy(self) -> BoxFuture<Self::Creator, Error>;
-    fn doc<K: Key, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
-    fn insert<K: Key, D: Document>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
-    fn delete<K: Key>(&self, key: K) -> BoxFuture<(), Error>;
+    fn info(&self) -> BoxFuture<DatabaseInfo, Error>;
+    fn doc<K: Key + 'static, D: Document + 'static>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
+    fn insert<K: Key + 'static, D: Document + 'static>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
+    fn delete<K: Key + 'static>(&self, key: K) -> BoxFuture<(), Error>;
 }
 ```
 
