@@ -78,7 +78,7 @@ We don't implement our own `Deserialize` and `Serialize` traits, but instead
 use the ones from serde.
 
 ```rust
-use serde::de::Deserialize;
+use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 ```
 
@@ -105,10 +105,7 @@ CouchDB is all about handling documents, which means we have to find a
 definition for what constitutes a document. In our case, we decide that
 anything that can be serialised and deserialised by serde is a document.
 
-Also, we provide a blanket implementation that ensures that every type that
-is Deserialize and Serialize.
-
-The Document trait is a marker trait and holds no methods.
+Also, we provide a blanket implementation that ensures that every type that is DeserializeOwned and Serialize.
 
 Documents, as a design choice, don't hold information about the database
 they were loaded from.
@@ -116,9 +113,9 @@ they were loaded from.
 Finally, all Documents must be `Send`, as the represent plain data.
 
 ```rust
-pub trait Document: Deserialize + Serialize + Send {}
+pub trait Document: DeserializeOwned + Serialize + Send {}
 
-impl<D: Deserialize + Serialize + Send + ?Sized> Document for D {}
+impl<D: DeserializeOwned + Serialize + Send + ?Sized> Document for D {}
 ```
 
 ### Key
@@ -338,8 +335,8 @@ pub trait Database
     //fn info(self) -> BoxFuture<Self::DBInfo, Error>;
     fn destroy(self) -> BoxFuture<Self::Creator, Error>;
     fn info(&self) -> BoxFuture<DatabaseInfo, Error>;
-    fn doc<K: Key + 'static, D: Document + 'static>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
-    fn insert<K: Key + 'static, D: Document + 'static>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
+    fn doc<K: Key + 'static, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
+    fn insert<K: Key + 'static, D: Document>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
     fn delete<K: Key + 'static>(&self, key: K) -> BoxFuture<(), Error>;
 }
 ```

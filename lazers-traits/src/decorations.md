@@ -25,6 +25,8 @@ use super::Key;
 use result::Error;
 
 use futures::BoxFuture;
+use futures::future::{FutureResult,Either};
+use futures::future::{ok, err};
 use futures::Future;
 use futures::finished;
 use futures::done;
@@ -53,29 +55,33 @@ passed through and no attempt to create the database is undertaken.
 pub trait FindDatabaseResult {
     type D: Database;
 
-    fn or_create(self) -> Self;
+    fn or_create(self) -> Box<Future<Item=DatabaseState<Self::D, <Self::D as Database>::Creator>, Error=Error>>;
     fn and_delete(self) -> Self;
 }
 
-impl<D: Database + 'static> FindDatabaseResult for BoxFuture<DatabaseState<D, D::Creator>, Error> {
+impl<D: Database + 'static> FindDatabaseResult for Box<Future<Item=DatabaseState<D, D::Creator>, Error=Error>> {
     type D = D;
 
     fn or_create(self) -> Self {
-        self.and_then({ |state|
+        let future = self.and_then({ |state|
             match state {
-                DatabaseState::Existing(_) => finished(state).boxed(),
-                DatabaseState::Absent(creator) => creator.create().and_then(|d| finished(DatabaseState::Existing(d))).boxed(),
+                DatabaseState::Existing(_) => Either::A(ok(state)),
+                DatabaseState::Absent(creator) => Either::B(creator.create().and_then(|d| ok(DatabaseState::Existing(d)))),
             }
-        }).boxed()
+        });
+        
+        Box::new(future)
     }
 
     fn and_delete(self) -> Self {
-        self.and_then({ |state|
+        let future = self.and_then({ |state|
             match state {
-                DatabaseState::Absent(c) => finished(DatabaseState::Absent(c)).boxed(),
-                DatabaseState::Existing(d) => d.destroy().and_then(|c| finished(DatabaseState::Absent(c))).boxed(),
+                DatabaseState::Absent(c) => Either::A(ok(DatabaseState::Absent(c))),
+                DatabaseState::Existing(d) => Either::B(d.destroy().and_then(|c| finished(DatabaseState::Absent(c)))),
             }
-        }).boxed()
+        });
+
+        Box::new(future)
     }
 }
 ```
