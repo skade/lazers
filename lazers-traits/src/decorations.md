@@ -52,14 +52,16 @@ passed through and no attempt to create the database is undertaken.
 
 
 ```rust
+type FindDatabaseFuture<D: Database> = Box<Future<Item=DatabaseState<D, D::Creator>, Error=Error>>;
+
 pub trait FindDatabaseResult {
     type D: Database;
 
-    fn or_create(self) -> Box<Future<Item=DatabaseState<Self::D, <Self::D as Database>::Creator>, Error=Error>>;
-    fn and_delete(self) -> Self;
+    fn or_create(self) -> FindDatabaseFuture<Self::D>;
+    fn and_delete(self) -> FindDatabaseFuture<Self::D>;
 }
 
-impl<D: Database + 'static> FindDatabaseResult for Box<Future<Item=DatabaseState<D, D::Creator>, Error=Error>> {
+impl<D: Database + 'static> FindDatabaseResult for FindDatabaseFuture<D> {
     type D = D;
 
     fn or_create(self) -> Self {
