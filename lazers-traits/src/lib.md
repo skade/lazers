@@ -42,7 +42,7 @@ extern crate futures;
 
 ## Exports
 
-The library exports two modules.
+The library exports three modules.
 
 [`result`](/lazers-traits/src/result) defines our own `Result` type. See the module page for details.
 
@@ -68,10 +68,10 @@ We use a custom error created using error_chain!.
 use result::Error;
 ```
 
-Futures, we use mainly through the BoxFuture interface. This carries with it the information that we expect all futures to be `Send`.
+We use the standard Futures interface. We usually use them through a Box.
 
 ```rust
-use futures::BoxFuture;
+use futures::Future;
 ```
 
 We don't implement our own `Deserialize` and `Serialize` traits, but instead
@@ -186,7 +186,7 @@ All operations return a result.
 pub trait Client: Default {
     type Database: Database;
 
-    fn find_database(&self, name: DatabaseName) -> BoxFuture<DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>, Error>;
+    fn find_database(&self, name: DatabaseName) -> Box<Future<Item=DatabaseState<Self::Database, <<Self as Client>::Database as Database>::Creator>, Error=Error>>;
     fn id(&self) -> String;
 }
 ```
@@ -241,7 +241,7 @@ pub trait DatabaseCreator
 {
     type D: Database;
 
-    fn create(self) -> BoxFuture<Self::D, Error>;
+    fn create(self) -> Box<Future<Item=Self::D, Error=Error>>;
 }
 ```
 
@@ -333,11 +333,11 @@ pub trait Database
     //type DBInfo: DatabaseInfo;
 
     //fn info(self) -> BoxFuture<Self::DBInfo, Error>;
-    fn destroy(self) -> BoxFuture<Self::Creator, Error>;
-    fn info(&self) -> BoxFuture<DatabaseInfo, Error>;
-    fn doc<K: Key + 'static, D: Document>(&self, key: K) -> BoxFuture<DatabaseEntry<K, D, Self>, Error>;
-    fn insert<K: Key + 'static, D: Document>(&self, key: K, doc: D) -> BoxFuture<(K, D), Error>;
-    fn delete<K: Key + 'static>(&self, key: K) -> BoxFuture<(), Error>;
+    fn destroy(self) -> Box<Future<Item=Self::Creator, Error=Error>>;
+    fn info(&self) -> Box<Future<Item=DatabaseInfo, Error=Error>>;
+    fn doc<K: Key + 'static, D: Document>(&self, key: K) -> Box<Future<Item=DatabaseEntry<K, D, Self>, Error=Error>>;
+    fn insert<K: Key + 'static, D: Document>(&self, key: K, doc: D) -> Box<Future<Item=(K, D), Error=Error>>;
+    fn delete<K: Key + 'static>(&self, key: K) -> Box<Future<Item=(), Error=Error>>;
 }
 ```
 

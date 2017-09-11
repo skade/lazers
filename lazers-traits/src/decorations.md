@@ -24,9 +24,8 @@ use super::Key;
 
 use result::Error;
 
-use futures::BoxFuture;
-use futures::future::{FutureResult,Either};
-use futures::future::{ok, err};
+use futures::future::Either;
+use futures::future::ok;
 use futures::Future;
 use futures::finished;
 use futures::done;
@@ -71,7 +70,7 @@ impl<D: Database + 'static> FindDatabaseResult for FindDatabaseFuture<D> {
                 DatabaseState::Absent(creator) => Either::B(creator.create().and_then(|d| ok(DatabaseState::Existing(d)))),
             }
         });
-        
+
         Box::new(future)
     }
 
@@ -110,32 +109,36 @@ result and returns another one instead, describing the new state of the
 document or possibly an error.
 
 ```rust
+type DatabaseEntryFuture<K: Key + 'static, D: Document + 'static, DB: Database+ 'static> = Box<Future<Item=DatabaseEntry<K, D, DB>, Error=Error>>;
+
 pub trait DocumentResult {
     type K: Key;
     type D: Document;
 
-    fn get(self) -> BoxFuture<Self::D, Error>;
+    fn get(self) -> Box<Future<Item=Self::D, Error=Error>>;
     fn set(self, doc: Self::D) -> Self;
     fn delete(self) -> Self;
 }
 
-impl<K: Key + 'static, D: Document + 'static, DB: Database + 'static> DocumentResult for BoxFuture<DatabaseEntry<K, D, DB>, Error> {
+impl<K: Key + 'static, D: Document + 'static, DB: Database + 'static> DocumentResult for DatabaseEntryFuture<K, D, DB> {
     type K = K;
     type D = D;
 
-    fn get(self) -> BoxFuture<Self::D, Error> {
-        self.and_then(|entry| {
+    fn get(self) -> Box<Future<Item=Self::D, Error=Error>> {
+        let res = self.and_then(|entry| {
             let res = match entry {
                 DatabaseEntry::Present { doc: d, .. } => Ok(d),
                 DatabaseEntry::Absent { key, .. } => Err(key.id().to_string().into()),
                 _ => panic!("conflicts are unimplemented"),
             };
-            done(res).boxed()
-        }).boxed()
+            done(res)
+        });
+
+        Box::new(res)
     }
 
     fn set(self, doc: D) -> Self {
-        self.and_then(|entry| {
+        let res = self.and_then(|entry| {
             match entry {
                 DatabaseEntry::Absent { key, database: db, .. } |
                 DatabaseEntry::Present { key, database: db, .. } => {
@@ -150,26 +153,32 @@ impl<K: Key + 'static, D: Document + 'static, DB: Database + 'static> DocumentRe
                 }
                 DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
             }
-        }).boxed()
+        });
+
+        Box::new(res)
     }
 
     fn delete(self) -> Self {
-        self.and_then(|entry| {
+        let res = self.and_then(|entry| {
             match entry {
                 DatabaseEntry::Present { key, database: db, .. } => {
                     // ignoring here is fine, the OK value is ()
-                    db.delete(key.clone()).and_then( |_| {
+                    let res = db.delete(key.clone()).and_then( |_| {
                         let new_entry = DatabaseEntry::Absent {
                             key: key,
                             database: db,
                         };
                         finished(new_entry)
-                    }).boxed()
+                    });
+
+                    Either::A(res)
                 }
-                a @ DatabaseEntry::Absent { .. } => finished(a).boxed(),
+                a @ DatabaseEntry::Absent { .. } => Either::B(finished(a)),
                 DatabaseEntry::Conflicted { .. } => panic!("unimplemented"),
             }
-        }).boxed()
+        });
+
+        Box::new(res)
     }
 }
 ```
